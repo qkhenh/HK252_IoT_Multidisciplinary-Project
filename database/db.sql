@@ -1,3 +1,37 @@
+-- 1. Xóa các bảng tầng ngoài cùng (Không có bảng nào tham chiếu đến chúng)
+DROP TABLE IF EXISTS system_audit_logs;
+DROP TABLE IF EXISTS ai_predictions;
+DROP TABLE IF EXISTS access_logs;
+DROP TABLE IF EXISTS access_tokens;
+
+-- 2. Xóa các bảng trung gian phụ thuộc vào Citizens và Vehicle Types
+DROP TABLE IF EXISTS guest_registrations;
+DROP TABLE IF EXISTS vehicles;
+
+-- 3. Xóa các bảng phân quyền người dùng (Phụ thuộc vào Users, Zones, Gates, Houses)
+DROP TABLE IF EXISTS managers;
+DROP TABLE IF EXISTS security_guards;
+DROP TABLE IF EXISTS citizens;
+
+-- 4. Xóa các thiết bị (Phụ thuộc vào Gates)
+DROP TABLE IF EXISTS iot_devices;
+
+-- 5. Xóa các bảng quản lý hạ tầng (Phụ thuộc vào Zones)
+DROP TABLE IF EXISTS houses;
+DROP TABLE IF EXISTS gates;
+
+-- 6. Xóa các bảng gốc (Không chứa khóa ngoại nào tham chiếu ra ngoài)
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS vehicle_types;
+DROP TABLE IF EXISTS ai_models;
+DROP TABLE IF EXISTS zones;
+
+-- 7. Xóa các Enum Types (Chỉ xóa được sau khi các bảng sử dụng chúng đã bay màu)
+DROP TYPE IF EXISTS user_role_enum;
+DROP TYPE IF EXISTS vehicle_type_enum;
+DROP TYPE IF EXISTS gate_direction_enum;
+DROP TYPE IF EXISTS access_method_enum;
+
 create type user_role_enum as enum ('citizen', 'guard', 'manager');
 create type vehicle_type_enum as enum ('car', 'motorbike', 'bicycle', 'truck', 'emergency');
 create type gate_direction_enum as enum ('inbound', 'outbound');
@@ -65,7 +99,6 @@ create table security_guards (
     shift_end time
 );
 
-drop table if exists managers cascade; 
 
 create table managers ( -- Quản lý zone
     user_id int primary key references users(user_id) on delete cascade,
@@ -146,8 +179,6 @@ create table ai_predictions ( -- Bảng thống kê dữ liệu phân tích
     bounding_box_json jsonb,
     cropped_plate_image_data BYTEA
 );
-
-drop table system_audit_logs;
 
 create table system_audit_logs (
     audit_id serial primary key,
