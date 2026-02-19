@@ -1,0 +1,359 @@
+const citizensModel = require('../models/citizens.model');
+
+/**
+ * Tạo mã OTP khẩn cấp
+ * POST /api/v1/citizens/tokens
+ */
+const createOTP = async (req, res, next) => {
+    try {
+        const { citizen_id } = req.body;
+        
+        // Nếu không truyền citizen_id, lấy từ token (user đang đăng nhập)
+        const targetCitizenId = citizen_id || req.user.user_id;
+        
+        // Kiểm tra quyền: chỉ citizen mới tạo được OTP
+        if (req.user.role !== 'citizen') {
+            return res.status(403).json({
+                success: false,
+                message: 'Chỉ cư dân mới có thể tạo mã OTP',
+            });
+        }
+        
+        // Kiểm tra citizen tồn tại
+        const citizenExists = await citizensModel.checkCitizenExists(targetCitizenId);
+        if (!citizenExists) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy thông tin cư dân',
+            });
+        }
+        
+        // Kiểm tra: user chỉ được tạo OTP cho chính mình
+        if (targetCitizenId !== req.user.user_id) {
+            return res.status(403).json({
+                success: false,
+                message: 'Bạn chỉ có thể tạo OTP cho chính mình',
+            });
+        }
+        
+        // Tạo OTP (mặc định 15 phút)
+        const token = await citizensModel.createOTP(targetCitizenId, 15);
+        
+        res.status(201).json({
+            success: true,
+            data: {
+                otp_code: token.otp_code,
+                valid_until: token.valid_until,
+            },
+        });
+        
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * Lấy danh sách OTP đã tạo
+ * GET /api/v1/citizens/tokens
+ */
+const getMyOTPs = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'citizen') {
+            return res.status(403).json({
+                success: false,
+                message: 'Chỉ cư dân mới có thể xem danh sách OTP',
+            });
+        }
+        
+        const tokens = await citizensModel.getOTPsByCitizen(req.user.user_id);
+        
+        res.status(200).json({
+            success: true,
+            data: tokens,
+        });
+        
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ========================
+// VEHICLES MANAGEMENT
+// ========================
+
+/**
+ * Lấy danh sách xe của citizen
+ * GET /api/v1/citizens/vehicles
+ */
+const getMyVehicles = async (req, res, next) => {
+    try {
+        const vehicles = await citizensModel.getVehiclesByCitizen(req.user.user_id);
+        
+        res.status(200).json({
+            success: true,
+            data: vehicles,
+        });
+        
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * Lấy danh sách loại xe
+ * GET /api/v1/citizens/vehicle-types
+ */
+const getVehicleTypes = async (req, res, next) => {
+    try {
+        const types = await citizensModel.getVehicleTypes();
+        
+        res.status(200).json({
+            success: true,
+            data: types,
+        });
+        
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * Đăng ký xe mới
+ * POST /api/v1/citizens/vehicles
+ */
+const registerVehicle = async (req, res, next) => {
+    try {
+        const { type_id, license_plate, vehicle_color, vehicle_image_url } = req.body;
+        
+        // Validate
+        if (!type_id || !license_plate) {
+            return res.status(400).json({
+                success: false,
+                message: 'Thiếu thông tin: type_id và license_plate là bắt buộc',
+            });
+        }
+        
+        // Validate license plate format (Vietnamese plate - flexible)
+        // Supports: 51F-123.45, 59A1-12345, 59B1-567.89, 30H-12345, etc.
+        const cleanPlate = license_plate.replace(/[\s.-]/g, '');
+        const plateRegex = /^[0-9]{2}[A-Z]{1,2}[0-9]{4,6}$/i;
+        if (!plateRegex.test(cleanPlate) || cleanPlate.length < 7 || cleanPlate.length > 10) {
+            return res.status(400).json({
+                success: false,
+                message: 'Biển số xe không đúng định dạng',
+            });
+        }
+        
+        // Check if plate already exists
+        const existingPlate = await citizensModel.checkLicensePlateExists(license_plate);
+        if (existingPlate) {
+            return res.status(409).json({
+                success: false,
+                message: 'Biển số xe này đã được đăng ký trong hệ thống',
+            });
+        }
+        
+        // Register vehicle
+        const vehicle = await citizensModel.registerVehicle({
+            ownerId: req.user.user_id,
+            typeId: type_id,
+            licensePlate: license_plate,
+            vehicleColor: vehicle_color || null,
+            vehicleImageUrl: vehicle_image_url || null,
+        });
+        
+        res.status(201).json({
+            success: true,
+            message: 'Đăng ký xe thành công',
+            data: vehicle,
+        });
+        
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * Cập nhật trạng thái xe (active/inactive)
+ * PATCH /api/v1/citizens/vehicles/:vehicleId
+ */
+const updateVehicleStatus = async (req, res, next) => {
+    try {
+        const { vehicleId } = req.params;
+        const { is_active } = req.body;
+        
+        if (typeof is_active !== 'boolean') {
+            return res.status(400).json({
+                success: false,
+                message: 'is_active phải là boolean (true/false)',
+            });
+        }
+        
+        const result = await citizensModel.updateVehicleStatus(
+            parseInt(vehicleId, 10),
+            req.user.user_id,
+            is_active
+        );
+        
+        if (!result) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy xe hoặc bạn không có quyền chỉnh sửa',
+            });
+        }
+        
+        res.status(200).json({
+            success: true,
+            message: is_active ? 'Đã kích hoạt xe' : 'Đã vô hiệu hóa xe',
+            data: result,
+        });
+        
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ========================
+// GUEST REGISTRATION
+// ========================
+
+/**
+ * Lấy danh sách khách đã đăng ký
+ * GET /api/v1/citizens/guests
+ */
+const getMyGuests = async (req, res, next) => {
+    try {
+        const guests = await citizensModel.getGuestRegistrations(req.user.user_id);
+        
+        res.status(200).json({
+            success: true,
+            data: guests,
+        });
+        
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * Đăng ký khách có hẹn trước
+ * POST /api/v1/citizens/guests
+ */
+const registerGuest = async (req, res, next) => {
+    try {
+        const { 
+            guest_name, 
+            guest_license_plate, 
+            vehicle_type_id,
+            visit_start_time, 
+            visit_end_time,
+            purpose 
+        } = req.body;
+        
+        // Validate required fields
+        if (!guest_name || !guest_license_plate || !visit_start_time || !visit_end_time) {
+            return res.status(400).json({
+                success: false,
+                message: 'Thiếu thông tin: guest_name, guest_license_plate, visit_start_time, visit_end_time là bắt buộc',
+            });
+        }
+        
+        // Validate time range
+        const startTime = new Date(visit_start_time);
+        const endTime = new Date(visit_end_time);
+        const now = new Date();
+        
+        if (startTime >= endTime) {
+            return res.status(400).json({
+                success: false,
+                message: 'Thời gian bắt đầu phải trước thời gian kết thúc',
+            });
+        }
+        
+        if (endTime <= now) {
+            return res.status(400).json({
+                success: false,
+                message: 'Thời gian kết thúc phải sau thời điểm hiện tại',
+            });
+        }
+        
+        // Check for time conflict with same plate
+        const conflict = await citizensModel.checkGuestPlateConflict(
+            guest_license_plate,
+            visit_start_time,
+            visit_end_time
+        );
+        
+        if (conflict) {
+            return res.status(409).json({
+                success: false,
+                message: 'Biển số xe này đã được đăng ký trong khung giờ trùng lặp',
+            });
+        }
+        
+        // Register guest
+        const registration = await citizensModel.registerGuest({
+            hostId: req.user.user_id,
+            guestName: guest_name,
+            guestLicensePlate: guest_license_plate,
+            vehicleTypeId: vehicle_type_id || 1, // default: car
+            visitStartTime: visit_start_time,
+            visitEndTime: visit_end_time,
+            purpose: purpose || null,
+        });
+        
+        res.status(201).json({
+            success: true,
+            message: 'Đã thêm khách vào danh sách Whitelist tạm thời.',
+            data: registration,
+        });
+        
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * Hủy đăng ký khách
+ * DELETE /api/v1/citizens/guests/:registrationId
+ */
+const cancelGuest = async (req, res, next) => {
+    try {
+        const { registrationId } = req.params;
+        
+        const result = await citizensModel.cancelGuestRegistration(
+            parseInt(registrationId, 10),
+            req.user.user_id
+        );
+        
+        if (!result) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy đăng ký hoặc bạn không có quyền hủy',
+            });
+        }
+        
+        res.status(200).json({
+            success: true,
+            message: 'Đã hủy đăng ký khách',
+        });
+        
+    } catch (error) {
+        next(error);
+    }
+};
+
+module.exports = {
+    // OTP
+    createOTP,
+    getMyOTPs,
+    // Vehicles
+    getMyVehicles,
+    getVehicleTypes,
+    registerVehicle,
+    updateVehicleStatus,
+    // Guests
+    getMyGuests,
+    registerGuest,
+    cancelGuest,
+};
