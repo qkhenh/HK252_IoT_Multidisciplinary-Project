@@ -56,6 +56,14 @@ ENV/
 *.onnx
 *.weights
 
+# Python environments
+venv_ai/
+__pycache__/
+
+# Temporary images
+*.jpg
+*.png
+
 # ========================
 # IDE & Editors
 # ========================
@@ -108,3 +116,5 @@ temp/
 # ========================
 docker-data/
 pg_data/
+
+.vscode/
