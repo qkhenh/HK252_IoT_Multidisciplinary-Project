@@ -660,7 +660,7 @@ Danh sách cổng vật lý và thiết bị IoT.
 ---
 
 #### ✅ GET `/api/v1/managers/ai/performance`
-Đánh giá hiệu suất tổng thể của AI nhận diện.
+Đánh giá hiệu suất AI dựa trên access_logs (30 ngày gần nhất).
 
 **Response 200:**
 ```json
@@ -670,51 +670,6 @@ Danh sách cổng vật lý và thiết bị IoT.
   "accuracy_rate_percent": 92.0,
   "corrections_submitted": 25
 }
-```
-
----
-
-#### ✅ GET `/api/v1/managers/ai/models`
-Danh sách mô hình AI đang được deploy.
-
-**Response 200:**
-```json
-[
-  {
-    "model_id": "uuid",
-    "model_name": "YOLOv8-PlateDetection",
-    "version": "1.2.0",
-    "is_active": true,
-    "accuracy_percent": 94.5
-  }
-]
-```
-
----
-
-#### ✅ PATCH `/api/v1/managers/ai/models/:id`
-Bật/tắt một mô hình AI.
-
-**Request Body:** `{ "is_active": false }`
-
-**Response 200:** `{ "message": "Cập nhật trạng thái model thành công." }`
-
----
-
-#### ✅ GET `/api/v1/managers/ai/corrections`
-Danh sách log AI đã bị Guard báo cáo sửa lỗi biển số.
-
-**Response 200:**
-```json
-[
-  {
-    "log_id": "uuid",
-    "check_in_time": "2026-01-10T08:05:00Z",
-    "original_detected_text": "51A-12345",
-    "corrected_text": "51A-12346",
-    "corrected_by": "Bảo vệ 1"
-  }
-]
 ```
 
 ---
@@ -961,19 +916,16 @@ Lấy trạng thái hiện tại của rào chắn từ IoT Gateway.
 | 31 | `GET /api/v1/managers/audit-logs` | ✅ | UC-11 |
 | 32 | `GET /api/v1/managers/gates` | ✅ | UC-12 |
 | 33 | `GET /api/v1/managers/ai/performance` | ✅ | UC-12 |
-| 34 | `GET /api/v1/managers/ai/models` | ✅ | UC-12 |
-| 35 | `PATCH /api/v1/managers/ai/models/:id` | ✅ | UC-12 |
-| 36 | `GET /api/v1/managers/ai/corrections` | ✅ | UC-12 |
-| 37 | `POST /api/v1/managers/manual-action` | ❌ | UC-07 Override |
-| 38 | `POST /api/v1/managers/guests` | ❌ | UC-02 Override |
-| 39 | `POST /api/v1/gates/check-in` | ✅ | UC-13, UC-14 |
-| 40 | `POST /api/v1/gates/verify-camera-otp` | ❌ | UC-06 Auto |
-| 41 | `GET /api/v1/gates/:gateId` | ✅ | Heartbeat |
-| 42 | `GET /health` (Gateway) | ✅ | IoT Internal |
-| 43 | `POST /api/v1/command` (Gateway) | ✅ | IoT Internal |
-| 44 | `GET /api/v1/status` (Gateway) | ✅ | IoT Internal |
+| 34 | `POST /api/v1/managers/manual-action` | ❌ | UC-07 Override |
+| 35 | `POST /api/v1/managers/guests` | ❌ | UC-02 Override |
+| 36 | `POST /api/v1/gates/check-in` | ✅ | UC-13, UC-14 |
+| 37 | `POST /api/v1/gates/verify-camera-otp` | ❌ | UC-06 Auto |
+| 38 | `GET /api/v1/gates/:gateId` | ✅ | Heartbeat |
+| 39 | `GET /health` (Gateway) | ✅ | IoT Internal |
+| 40 | `POST /api/v1/command` (Gateway) | ✅ | IoT Internal |
+| 41 | `GET /api/v1/status` (Gateway) | ✅ | IoT Internal |
 
-**Tổng: 44 endpoints — 37 ✅ đã implement · 7 ❌ cần bổ sung**
+**Tổng: 41 endpoints — 34 ✅ đã implement · 7 ❌ cần bổ sung**
 
 ### 7 Endpoints còn thiếu cần implement:
 
@@ -986,4 +938,6 @@ Lấy trạng thái hiện tại của rào chắn từ IoT Gateway.
 | 5 | `POST /api/v1/managers/manual-action` | Manager override mở/đóng cổng (UC-07) |
 | 6 | `POST /api/v1/managers/guests` | Manager đăng ký khách cho cư dân (UC-02) |
 | 7 | `POST /api/v1/gates/verify-camera-otp` | AI gửi kết quả OCR OTP/QR Camera (UC-06) |
+
+> **Lưu ý:** Các endpoint `GET /api/v1/managers/ai/models`, `PATCH /api/v1/managers/ai/models/:id`, `GET /api/v1/managers/ai/corrections` đã được **loại bỏ** vì bảng `ai_models` và `ai_predictions` không còn trong schema v2.
 
