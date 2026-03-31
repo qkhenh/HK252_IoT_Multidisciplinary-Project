@@ -13,7 +13,7 @@ router.use(authorize('citizen'));
 
 /**
  * @route   POST /api/v1/citizens/tokens
- * @desc    Tạo mã OTP khẩn cấp (6 số, hiệu lực 15 phút)
+ * @desc    Tạo mã OTP (6 số, hiệu lực 15 phút)
  * @access  Private - Citizen only
  */
 router.post('/tokens', citizensController.createOTP);
@@ -24,6 +24,13 @@ router.post('/tokens', citizensController.createOTP);
  * @access  Private - Citizen only
  */
 router.get('/tokens', citizensController.getMyOTPs);
+
+/**
+ * @route   POST /api/v1/citizens/qr-code
+ * @desc    Tạo QR token (UUID, hiệu lực 3 phút) - UC-15
+ * @access  Private - Citizen only
+ */
+router.post('/qr-code', citizensController.createQRToken);
 
 // ========================
 // VEHICLES MANAGEMENT
@@ -81,5 +88,17 @@ router.post('/guests', citizensController.registerGuest);
  * @access  Private - Citizen only
  */
 router.delete('/guests/:registrationId', citizensController.cancelGuest);
+
+// ========================
+// ACCESS LOGS
+// ========================
+
+/**
+ * @route   GET /api/v1/citizens/logs
+ * @desc    Lịch sử ra vào của xe thuộc citizen (UC-04)
+ * @access  Private - Citizen only
+ * @query   page, limit, from, to
+ */
+router.get('/logs', citizensController.getMyAccessLogs);
 
 module.exports = router;

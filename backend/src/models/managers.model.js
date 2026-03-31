@@ -14,13 +14,13 @@ const db = require('../libs/db');
  */
 const getPendingVehicles = async (managedZoneId, { limit = 20, offset = 0 } = {}) => {
     const result = await db.query(`
-        SELECT 
+        SELECT
             v.vehicle_id,
             v.license_plate,
+            v.vehicle_type,
             v.vehicle_color,
             v.registered_at,
             v.is_active,
-            vt.type_name AS vehicle_type,
             u.full_name AS owner_name,
             u.email AS owner_email,
             c.phone_number AS owner_phone,
@@ -28,17 +28,16 @@ const getPendingVehicles = async (managedZoneId, { limit = 20, offset = 0 } = {}
             h.block_number,
             z.zone_name
         FROM vehicles v
-        JOIN citizens c ON v.owner_id = c.user_id
-        JOIN users u ON c.user_id = u.user_id
+        JOIN users u ON v.owner_user_id = u.user_id
+        JOIN citizens c ON v.owner_user_id = c.user_id
         JOIN houses h ON c.house_id = h.house_id
         JOIN zones z ON h.zone_id = z.zone_id
-        LEFT JOIN vehicle_types vt ON v.type_id = vt.type_id
         WHERE v.is_active = false
           AND z.zone_id = $1
         ORDER BY v.registered_at DESC
         LIMIT $2 OFFSET $3
     `, [managedZoneId, limit, offset]);
-    
+
     return result.rows;
 };
 
@@ -49,11 +48,12 @@ const countPendingVehicles = async (managedZoneId) => {
     const result = await db.query(`
         SELECT COUNT(*) AS total
         FROM vehicles v
-        JOIN citizens c ON v.owner_id = c.user_id
+        JOIN users u ON v.owner_user_id = u.user_id
+        JOIN citizens c ON v.owner_user_id = c.user_id
         JOIN houses h ON c.house_id = h.house_id
         WHERE v.is_active = false AND h.zone_id = $1
     `, [managedZoneId]);
-    
+
     return parseInt(result.rows[0].total, 10);
 };
 
@@ -62,22 +62,21 @@ const countPendingVehicles = async (managedZoneId) => {
  */
 const getVehicleById = async (vehicleId, managedZoneId) => {
     const result = await db.query(`
-        SELECT 
-            v.*,
-            vt.type_name AS vehicle_type,
+        SELECT
+            v.vehicle_id, v.license_plate, v.vehicle_type, v.vehicle_color,
+            v.is_active, v.registered_at, v.owner_user_id,
             u.full_name AS owner_name,
             c.phone_number AS owner_phone,
             h.house_number, h.block_number,
             z.zone_id, z.zone_name
         FROM vehicles v
-        JOIN citizens c ON v.owner_id = c.user_id
-        JOIN users u ON c.user_id = u.user_id
+        JOIN users u ON v.owner_user_id = u.user_id
+        JOIN citizens c ON v.owner_user_id = c.user_id
         JOIN houses h ON c.house_id = h.house_id
         JOIN zones z ON h.zone_id = z.zone_id
-        LEFT JOIN vehicle_types vt ON v.type_id = vt.type_id
         WHERE v.vehicle_id = $1 AND z.zone_id = $2
     `, [vehicleId, managedZoneId]);
-    
+
     return result.rows[0] || null;
 };
 
@@ -130,19 +129,20 @@ const logAuditAction = async ({ actorId, actionType, targetTable, targetId, acti
  */
 const getTrafficByDay = async (managedZoneId, days = 7) => {
     const result = await db.query(`
-        SELECT 
+        SELECT
             DATE(al.check_in_time) AS date,
             COUNT(*) AS total_entries,
             SUM(CASE WHEN al.is_access_granted = true THEN 1 ELSE 0 END) AS granted,
             SUM(CASE WHEN al.is_access_granted = false THEN 1 ELSE 0 END) AS denied
         FROM access_logs al
-        JOIN gates g ON al.gate_id = g.gate_id
+        JOIN lanes l ON al.lane_id = l.lane_id
+        JOIN gates g ON l.gate_id = g.gate_id
         WHERE g.zone_id = $1
           AND al.check_in_time >= CURRENT_DATE - INTERVAL '1 day' * $2
         GROUP BY DATE(al.check_in_time)
         ORDER BY date DESC
     `, [managedZoneId, days]);
-    
+
     return result.rows;
 };
 
@@ -151,17 +151,18 @@ const getTrafficByDay = async (managedZoneId, days = 7) => {
  */
 const getTrafficByHour = async (managedZoneId) => {
     const result = await db.query(`
-        SELECT 
+        SELECT
             EXTRACT(HOUR FROM al.check_in_time)::int AS hour,
             COUNT(*) AS total_entries
         FROM access_logs al
-        JOIN gates g ON al.gate_id = g.gate_id
+        JOIN lanes l ON al.lane_id = l.lane_id
+        JOIN gates g ON l.gate_id = g.gate_id
         WHERE g.zone_id = $1
           AND al.check_in_time >= NOW() - INTERVAL '24 hours'
         GROUP BY EXTRACT(HOUR FROM al.check_in_time)
         ORDER BY hour
     `, [managedZoneId]);
-    
+
     return result.rows;
 };
 
@@ -170,19 +171,19 @@ const getTrafficByHour = async (managedZoneId) => {
  */
 const getVehicleTypeDistribution = async (managedZoneId) => {
     const result = await db.query(`
-        SELECT 
-            COALESCE(vt.type_name::text, 'unknown') AS vehicle_type,
+        SELECT
+            COALESCE(v.vehicle_type::text, 'unknown') AS vehicle_type,
             COUNT(*) AS count
         FROM access_logs al
-        JOIN gates g ON al.gate_id = g.gate_id
+        JOIN lanes l ON al.lane_id = l.lane_id
+        JOIN gates g ON l.gate_id = g.gate_id
         LEFT JOIN vehicles v ON al.vehicle_id = v.vehicle_id
-        LEFT JOIN vehicle_types vt ON v.type_id = vt.type_id
         WHERE g.zone_id = $1
           AND al.check_in_time >= NOW() - INTERVAL '30 days'
-        GROUP BY vt.type_name
+        GROUP BY v.vehicle_type
         ORDER BY count DESC
     `, [managedZoneId]);
-    
+
     return result.rows;
 };
 
@@ -191,17 +192,18 @@ const getVehicleTypeDistribution = async (managedZoneId) => {
  */
 const getAccessMethodDistribution = async (managedZoneId) => {
     const result = await db.query(`
-        SELECT 
+        SELECT
             al.access_method::text,
             COUNT(*) AS count
         FROM access_logs al
-        JOIN gates g ON al.gate_id = g.gate_id
+        JOIN lanes l ON al.lane_id = l.lane_id
+        JOIN gates g ON l.gate_id = g.gate_id
         WHERE g.zone_id = $1
           AND al.check_in_time >= NOW() - INTERVAL '30 days'
         GROUP BY al.access_method
         ORDER BY count DESC
     `, [managedZoneId]);
-    
+
     return result.rows;
 };
 
@@ -210,21 +212,31 @@ const getAccessMethodDistribution = async (managedZoneId) => {
  */
 const getQuickStats = async (managedZoneId) => {
     const result = await db.query(`
-        SELECT 
-            (SELECT COUNT(*) FROM access_logs al JOIN gates g ON al.gate_id = g.gate_id 
+        SELECT
+            (SELECT COUNT(*) FROM access_logs al
+             JOIN lanes l ON al.lane_id = l.lane_id
+             JOIN gates g ON l.gate_id = g.gate_id
              WHERE g.zone_id = $1 AND al.check_in_time >= CURRENT_DATE) AS today_total,
-            (SELECT COUNT(*) FROM access_logs al JOIN gates g ON al.gate_id = g.gate_id 
+            (SELECT COUNT(*) FROM access_logs al
+             JOIN lanes l ON al.lane_id = l.lane_id
+             JOIN gates g ON l.gate_id = g.gate_id
              WHERE g.zone_id = $1 AND al.check_in_time >= CURRENT_DATE AND al.is_access_granted = true) AS today_granted,
-            (SELECT COUNT(*) FROM access_logs al JOIN gates g ON al.gate_id = g.gate_id 
+            (SELECT COUNT(*) FROM access_logs al
+             JOIN lanes l ON al.lane_id = l.lane_id
+             JOIN gates g ON l.gate_id = g.gate_id
              WHERE g.zone_id = $1 AND al.check_in_time >= NOW() - INTERVAL '7 days') AS week_total,
-            (SELECT COUNT(*) FROM vehicles v JOIN citizens c ON v.owner_id = c.user_id 
-             JOIN houses h ON c.house_id = h.house_id 
+            (SELECT COUNT(*) FROM vehicles v
+             JOIN users u ON v.owner_user_id = u.user_id
+             JOIN citizens c ON v.owner_user_id = c.user_id
+             JOIN houses h ON c.house_id = h.house_id
              WHERE h.zone_id = $1 AND v.is_active = true) AS active_vehicles,
-            (SELECT COUNT(*) FROM vehicles v JOIN citizens c ON v.owner_id = c.user_id 
-             JOIN houses h ON c.house_id = h.house_id 
+            (SELECT COUNT(*) FROM vehicles v
+             JOIN users u ON v.owner_user_id = u.user_id
+             JOIN citizens c ON v.owner_user_id = c.user_id
+             JOIN houses h ON c.house_id = h.house_id
              WHERE h.zone_id = $1 AND v.is_active = false) AS pending_approvals
     `, [managedZoneId]);
-    
+
     return result.rows[0];
 };
 
@@ -236,77 +248,49 @@ const getQuickStats = async (managedZoneId) => {
  * Tìm kiếm và lọc access logs
  */
 const searchAccessLogs = async (managedZoneId, filters = {}) => {
-    const { 
-        startDate, 
-        endDate, 
-        accessMethod, 
-        isGranted,
-        licensePlate,
-        gateId,
-        limit = 50, 
-        offset = 0 
+    const {
+        startDate, endDate, accessMethod, isGranted,
+        licensePlate, gateId, limit = 50, offset = 0
     } = filters;
-    
+
     let query = `
-        SELECT 
+        SELECT
             al.log_id,
             al.check_in_time,
             al.access_method,
             al.is_access_granted,
+            al.detected_text,
+            al.action_reason,
             al.note,
+            l.lane_name,
+            l.direction,
             g.gate_name,
-            g.direction,
             v.license_plate,
-            u_guard.full_name AS guard_name,
-            ap.detected_plate_text,
-            ap.confidence_score,
-            ap.is_correct AS ai_is_correct,
-            ap.corrected_plate_text
+            u_guard.full_name AS guard_name
         FROM access_logs al
-        JOIN gates g ON al.gate_id = g.gate_id
+        JOIN lanes l ON al.lane_id = l.lane_id
+        JOIN gates g ON l.gate_id = g.gate_id
         LEFT JOIN vehicles v ON al.vehicle_id = v.vehicle_id
         LEFT JOIN users u_guard ON al.guard_id = u_guard.user_id
-        LEFT JOIN ai_predictions ap ON al.log_id = ap.log_id
         WHERE g.zone_id = $1
     `;
-    
+
     const params = [managedZoneId];
-    let paramIndex = 2;
-    
-    if (startDate) {
-        query += ` AND al.check_in_time >= $${paramIndex}`;
-        params.push(startDate);
-        paramIndex++;
-    }
-    if (endDate) {
-        query += ` AND al.check_in_time <= $${paramIndex}`;
-        params.push(endDate);
-        paramIndex++;
-    }
-    if (accessMethod) {
-        query += ` AND al.access_method = $${paramIndex}`;
-        params.push(accessMethod);
-        paramIndex++;
-    }
-    if (isGranted !== undefined) {
-        query += ` AND al.is_access_granted = $${paramIndex}`;
-        params.push(isGranted);
-        paramIndex++;
-    }
+    let p = 2;
+
+    if (startDate) { query += ` AND al.check_in_time >= $${p}`; params.push(startDate); p++; }
+    if (endDate)   { query += ` AND al.check_in_time <= $${p}`; params.push(endDate);   p++; }
+    if (accessMethod) { query += ` AND al.access_method = $${p}`; params.push(accessMethod); p++; }
+    if (isGranted !== undefined) { query += ` AND al.is_access_granted = $${p}`; params.push(isGranted); p++; }
     if (licensePlate) {
-        query += ` AND (v.license_plate ILIKE $${paramIndex} OR ap.detected_plate_text ILIKE $${paramIndex})`;
-        params.push(`%${licensePlate}%`);
-        paramIndex++;
+        query += ` AND (v.license_plate ILIKE $${p} OR al.detected_text ILIKE $${p})`;
+        params.push(`%${licensePlate}%`); p++;
     }
-    if (gateId) {
-        query += ` AND al.gate_id = $${paramIndex}`;
-        params.push(gateId);
-        paramIndex++;
-    }
-    
-    query += ` ORDER BY al.check_in_time DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    if (gateId) { query += ` AND g.gate_id = $${p}`; params.push(gateId); p++; }
+
+    query += ` ORDER BY al.check_in_time DESC LIMIT $${p} OFFSET $${p + 1}`;
     params.push(limit, offset);
-    
+
     const result = await db.query(query, params);
     return result.rows;
 };
@@ -316,50 +300,29 @@ const searchAccessLogs = async (managedZoneId, filters = {}) => {
  */
 const countAccessLogs = async (managedZoneId, filters = {}) => {
     const { startDate, endDate, accessMethod, isGranted, licensePlate, gateId } = filters;
-    
+
     let query = `
         SELECT COUNT(*) AS total
         FROM access_logs al
-        JOIN gates g ON al.gate_id = g.gate_id
+        JOIN lanes l ON al.lane_id = l.lane_id
+        JOIN gates g ON l.gate_id = g.gate_id
         LEFT JOIN vehicles v ON al.vehicle_id = v.vehicle_id
-        LEFT JOIN ai_predictions ap ON al.log_id = ap.log_id
         WHERE g.zone_id = $1
     `;
-    
+
     const params = [managedZoneId];
-    let paramIndex = 2;
-    
-    if (startDate) {
-        query += ` AND al.check_in_time >= $${paramIndex}`;
-        params.push(startDate);
-        paramIndex++;
-    }
-    if (endDate) {
-        query += ` AND al.check_in_time <= $${paramIndex}`;
-        params.push(endDate);
-        paramIndex++;
-    }
-    if (accessMethod) {
-        query += ` AND al.access_method = $${paramIndex}`;
-        params.push(accessMethod);
-        paramIndex++;
-    }
-    if (isGranted !== undefined) {
-        query += ` AND al.is_access_granted = $${paramIndex}`;
-        params.push(isGranted);
-        paramIndex++;
-    }
+    let p = 2;
+
+    if (startDate) { query += ` AND al.check_in_time >= $${p}`; params.push(startDate); p++; }
+    if (endDate)   { query += ` AND al.check_in_time <= $${p}`; params.push(endDate);   p++; }
+    if (accessMethod) { query += ` AND al.access_method = $${p}`; params.push(accessMethod); p++; }
+    if (isGranted !== undefined) { query += ` AND al.is_access_granted = $${p}`; params.push(isGranted); p++; }
     if (licensePlate) {
-        query += ` AND (v.license_plate ILIKE $${paramIndex} OR ap.detected_plate_text ILIKE $${paramIndex})`;
-        params.push(`%${licensePlate}%`);
-        paramIndex++;
+        query += ` AND (v.license_plate ILIKE $${p} OR al.detected_text ILIKE $${p})`;
+        params.push(`%${licensePlate}%`); p++;
     }
-    if (gateId) {
-        query += ` AND al.gate_id = $${paramIndex}`;
-        params.push(gateId);
-        paramIndex++;
-    }
-    
+    if (gateId) { query += ` AND g.gate_id = $${p}`; params.push(gateId); p++; }
+
     const result = await db.query(query, params);
     return parseInt(result.rows[0].total, 10);
 };
@@ -369,42 +332,31 @@ const countAccessLogs = async (managedZoneId, filters = {}) => {
  */
 const getLogWithImages = async (logId, managedZoneId) => {
     const result = await db.query(`
-        SELECT 
+        SELECT
             al.log_id,
             al.check_in_time,
             al.access_method,
             al.is_access_granted,
+            al.detected_text,
+            al.action_reason,
             al.note,
-            ENCODE(al.image_snapshot_data, 'base64') AS image_snapshot_base64,
-            g.gate_id, g.gate_name, g.direction,
-            v.vehicle_id, v.license_plate, v.vehicle_color,
-            vt.type_name AS vehicle_type,
+            ENCODE(al.image_snapshot_data, 'base64') AS image_snapshot,
+            l.lane_id, l.lane_name, l.direction,
+            g.gate_id, g.gate_name,
+            v.vehicle_id, v.license_plate, v.vehicle_type, v.vehicle_color,
             u_owner.full_name AS vehicle_owner_name,
             u_guard.full_name AS guard_name,
-            gr.guest_name, gr.purpose AS guest_purpose,
-            ap.prediction_id,
-            ap.detected_plate_text,
-            ap.confidence_score,
-            ap.processing_time_ms,
-            ap.is_correct AS ai_is_correct,
-            ap.corrected_plate_text,
-            ap.bounding_box_json,
-            ENCODE(ap.cropped_plate_image_data, 'base64') AS cropped_plate_base64,
-            am.model_name AS ai_model_name,
-            am.version AS ai_model_version
+            gr.guest_name
         FROM access_logs al
-        JOIN gates g ON al.gate_id = g.gate_id
+        JOIN lanes l ON al.lane_id = l.lane_id
+        JOIN gates g ON l.gate_id = g.gate_id
         LEFT JOIN vehicles v ON al.vehicle_id = v.vehicle_id
-        LEFT JOIN vehicle_types vt ON v.type_id = vt.type_id
-        LEFT JOIN citizens c ON v.owner_id = c.user_id
-        LEFT JOIN users u_owner ON c.user_id = u_owner.user_id
+        LEFT JOIN users u_owner ON v.owner_user_id = u_owner.user_id
         LEFT JOIN users u_guard ON al.guard_id = u_guard.user_id
-        LEFT JOIN guest_registrations gr ON al.guest_registration_id = gr.registration_id
-        LEFT JOIN ai_predictions ap ON al.log_id = ap.log_id
-        LEFT JOIN ai_models am ON ap.model_id = am.model_id
+        LEFT JOIN guest_registrations gr ON al.guest_reg_id = gr.registration_id
         WHERE al.log_id = $1 AND g.zone_id = $2
     `, [logId, managedZoneId]);
-    
+
     return result.rows[0] || null;
 };
 
@@ -413,162 +365,121 @@ const getLogWithImages = async (logId, managedZoneId) => {
  */
 const getAuditLogs = async (managedZoneId, { limit = 50, offset = 0 } = {}) => {
     const result = await db.query(`
-        SELECT 
+        SELECT
             sal.audit_id,
             sal.action_type,
             sal.target_table,
             sal.target_id,
             sal.action_details,
             sal.performed_at,
-            u.full_name AS actor_name
+            u.full_name AS actor_name,
+            u.role AS actor_role
         FROM system_audit_logs sal
-        JOIN managers m ON sal.actor_id = m.user_id
-        JOIN users u ON m.user_id = u.user_id
-        WHERE m.managed_zone_id = $1
+        LEFT JOIN users u ON sal.actor_id = u.user_id
         ORDER BY sal.performed_at DESC
-        LIMIT $2 OFFSET $3
-    `, [managedZoneId, limit, offset]);
-    
+        LIMIT $1 OFFSET $2
+    `, [limit, offset]);
+
     return result.rows;
 };
 
 // ============================================================
-// FR_MAN_04 - ĐÁNH GIÁ HIỆU NĂNG AI
+// FR_MAN_04 - ĐÁNH GIÁ HIỆU NĂNG AI (tính từ access_logs)
 // ============================================================
 
 /**
- * Thống kê hiệu năng AI
+ * Thống kê hiệu năng AI trong 30 ngày (tính từ access_logs, không cần ai_models)
  */
 const getAIPerformanceStats = async (managedZoneId) => {
     const result = await db.query(`
-        SELECT 
-            COUNT(*) AS total_predictions,
-            AVG(ap.confidence_score) AS avg_confidence,
-            AVG(ap.processing_time_ms) AS avg_processing_time_ms,
-            SUM(CASE WHEN ap.is_correct = true THEN 1 ELSE 0 END) AS correct_count,
-            SUM(CASE WHEN ap.is_correct = false THEN 1 ELSE 0 END) AS incorrect_count,
-            SUM(CASE WHEN ap.is_correct IS NULL THEN 1 ELSE 0 END) AS unverified_count,
-            SUM(CASE WHEN ap.corrected_plate_text IS NOT NULL THEN 1 ELSE 0 END) AS manual_corrections
-        FROM ai_predictions ap
-        JOIN access_logs al ON ap.log_id = al.log_id
-        JOIN gates g ON al.gate_id = g.gate_id
+        SELECT
+            COUNT(*) AS total_ai_events,
+            COUNT(*) FILTER (WHERE is_access_granted = true) AS successful_recognitions,
+            COUNT(*) FILTER (WHERE note IS NOT NULL) AS corrections_submitted,
+            ROUND(
+                100.0 * COUNT(*) FILTER (WHERE is_access_granted = true) / NULLIF(COUNT(*), 0),
+                1
+            ) AS accuracy_rate_percent
+        FROM access_logs al
+        JOIN lanes l ON al.lane_id = l.lane_id
+        JOIN gates g ON l.gate_id = g.gate_id
         WHERE g.zone_id = $1
+          AND al.access_method IN ('ai_plate_recognition', 'ai_camera_otp', 'ai_camera_qr')
           AND al.check_in_time >= NOW() - INTERVAL '30 days'
     `, [managedZoneId]);
-    
-    const stats = result.rows[0];
-    const total = parseInt(stats.total_predictions, 10) || 1;
-    const correct = parseInt(stats.correct_count, 10) || 0;
-    
+
+    const row = result.rows[0];
     return {
-        total_predictions: total,
-        avg_confidence: parseFloat(stats.avg_confidence) || 0,
-        avg_processing_time_ms: parseFloat(stats.avg_processing_time_ms) || 0,
-        correct_count: correct,
-        incorrect_count: parseInt(stats.incorrect_count, 10) || 0,
-        unverified_count: parseInt(stats.unverified_count, 10) || 0,
-        manual_corrections: parseInt(stats.manual_corrections, 10) || 0,
-        accuracy_rate: total > 0 ? (correct / (correct + parseInt(stats.incorrect_count, 10) || 1)) : 0,
+        total_ai_events: parseInt(row.total_ai_events, 10) || 0,
+        successful_recognitions: parseInt(row.successful_recognitions, 10) || 0,
+        accuracy_rate_percent: parseFloat(row.accuracy_rate_percent) || 0,
+        corrections_submitted: parseInt(row.corrections_submitted, 10) || 0,
     };
 };
 
-/**
- * Thống kê theo confidence score buckets
- */
-const getConfidenceDistribution = async (managedZoneId) => {
-    const result = await db.query(`
-        SELECT 
-            CASE 
-                WHEN confidence_score >= 0.95 THEN '95-100%'
-                WHEN confidence_score >= 0.90 THEN '90-95%'
-                WHEN confidence_score >= 0.80 THEN '80-90%'
-                WHEN confidence_score >= 0.70 THEN '70-80%'
-                ELSE 'Below 70%'
-            END AS confidence_bucket,
-            COUNT(*) AS count
-        FROM ai_predictions ap
-        JOIN access_logs al ON ap.log_id = al.log_id
-        JOIN gates g ON al.gate_id = g.gate_id
-        WHERE g.zone_id = $1
-          AND al.check_in_time >= NOW() - INTERVAL '30 days'
-        GROUP BY confidence_bucket
-        ORDER BY confidence_bucket DESC
-    `, [managedZoneId]);
-    
-    return result.rows;
-};
+// ============================================================
+// FR_MAN_05 - THAO TÁC THỦ CÔNG (UC-07 Override)
+// ============================================================
 
 /**
- * Lấy danh sách AI models
+ * Manager mở/đóng cổng khẩn cấp, ghi log thủ công
  */
-const getAIModels = async () => {
+const createManagerManualAction = async ({ gateId, managerId, action, actionReason, note }) => {
+    const laneResult = await db.query(
+        `SELECT lane_id FROM lanes WHERE gate_id = $1 LIMIT 1`,
+        [gateId]
+    );
+    const laneId = laneResult.rows[0]?.lane_id || null;
+    const isAccessGranted = action === 'OPEN';
+
     const result = await db.query(`
-        SELECT 
-            model_id,
-            model_name,
-            version,
-            accuracy_rate,
-            is_active,
-            created_at
-        FROM ai_models
-        ORDER BY created_at DESC
-    `);
-    
-    return result.rows;
+        INSERT INTO access_logs (
+            lane_id, guard_id, access_method, is_access_granted, action_reason, note
+        )
+        VALUES ($1, $2, 'manual_guard', $3, $4, $5)
+        RETURNING log_id, check_in_time
+    `, [laneId, managerId, isAccessGranted, actionReason || null, note || null]);
+
+    return result.rows[0];
 };
 
+// ============================================================
+// FR_MAN_06 - ĐĂNG KÝ KHÁCH THAY CƯ DÂN (UC-02 Override)
+// ============================================================
+
 /**
- * Cập nhật trạng thái AI model
+ * Manager đăng ký khách cho bất kỳ cư dân nào trong zone
  */
-const updateAIModelStatus = async (modelId, isActive) => {
-    // Nếu activate model mới, deactivate các model khác
-    if (isActive) {
-        await db.query(`UPDATE ai_models SET is_active = false WHERE is_active = true`);
-    }
-    
+const createGuestRegistration = async ({ hostCitizenId, guestName, guestLicensePlate, vehicleType, visitStartTime, visitEndTime }) => {
     const result = await db.query(`
-        UPDATE ai_models
-        SET is_active = $2
-        WHERE model_id = $1
-        RETURNING *
-    `, [modelId, isActive]);
-    
+        INSERT INTO guest_registrations (
+            host_user_id, guest_name, guest_license_plate, vehicle_type,
+            visit_start_time, visit_end_time, status
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, 'approved')
+        RETURNING registration_id, guest_name, guest_license_plate, visit_start_time, visit_end_time, status
+    `, [hostCitizenId, guestName, guestLicensePlate, vehicleType || 'car', visitStartTime, visitEndTime]);
+
     return result.rows[0];
 };
 
 /**
- * Lấy danh sách các lần AI bị sửa (để retrain)
+ * Kiểm tra citizen thuộc zone quản lý
  */
-const getAICorrections = async (managedZoneId, { limit = 100, offset = 0 } = {}) => {
+const checkCitizenInZone = async (citizenId, managedZoneId) => {
     const result = await db.query(`
-        SELECT 
-            ap.prediction_id,
-            ap.detected_plate_text,
-            ap.corrected_plate_text,
-            ap.confidence_score,
-            ENCODE(ap.cropped_plate_image_data, 'base64') AS cropped_plate_base64,
-            al.check_in_time,
-            u.full_name AS corrected_by_guard
-        FROM ai_predictions ap
-        JOIN access_logs al ON ap.log_id = al.log_id
-        JOIN gates g ON al.gate_id = g.gate_id
-        LEFT JOIN users u ON al.guard_id = u.user_id
-        WHERE ap.corrected_plate_text IS NOT NULL
-          AND g.zone_id = $1
-        ORDER BY al.check_in_time DESC
-        LIMIT $2 OFFSET $3
-    `, [managedZoneId, limit, offset]);
-    
-    return result.rows;
+        SELECT c.user_id
+        FROM citizens c
+        JOIN houses h ON c.house_id = h.house_id
+        WHERE c.user_id = $1 AND h.zone_id = $2
+    `, [citizenId, managedZoneId]);
+    return result.rows.length > 0;
 };
 
 // ============================================================
-// HELPER: GET MANAGER INFO
+// HELPERS
 // ============================================================
 
-/**
- * Lấy thông tin zone mà manager quản lý
- */
 const getManagerZone = async (userId) => {
     const result = await db.query(`
         SELECT m.managed_zone_id, z.zone_name, m.department_name
@@ -576,53 +487,58 @@ const getManagerZone = async (userId) => {
         LEFT JOIN zones z ON m.managed_zone_id = z.zone_id
         WHERE m.user_id = $1
     `, [userId]);
-    
     return result.rows[0] || null;
 };
 
-/**
- * Lấy danh sách gates trong zone
- */
 const getGatesInZone = async (managedZoneId) => {
     const result = await db.query(`
-        SELECT gate_id, gate_name, direction, is_active
-        FROM gates
-        WHERE zone_id = $1
-        ORDER BY gate_name
+        SELECT
+            g.gate_id, g.gate_name, g.is_active,
+            JSON_AGG(
+                JSON_BUILD_OBJECT('lane_id', l.lane_id, 'lane_name', l.lane_name, 'direction', l.direction)
+                ORDER BY l.lane_id
+            ) FILTER (WHERE l.lane_id IS NOT NULL) AS lanes
+        FROM gates g
+        LEFT JOIN lanes l ON g.gate_id = l.gate_id
+        WHERE g.zone_id = $1
+        GROUP BY g.gate_id, g.gate_name, g.is_active
+        ORDER BY g.gate_name
     `, [managedZoneId]);
-    
     return result.rows;
 };
 
 module.exports = {
-    // FR_MAN_01 - Vehicle Approval
+    // FR_MAN_01
     getPendingVehicles,
     countPendingVehicles,
     getVehicleById,
     approveVehicle,
     rejectVehicle,
     logAuditAction,
-    
-    // FR_MAN_02 - Analytics
+
+    // FR_MAN_02
     getTrafficByDay,
     getTrafficByHour,
     getVehicleTypeDistribution,
     getAccessMethodDistribution,
     getQuickStats,
-    
-    // FR_MAN_03 - Access Logs
+
+    // FR_MAN_03
     searchAccessLogs,
     countAccessLogs,
     getLogWithImages,
     getAuditLogs,
-    
-    // FR_MAN_04 - AI Performance
+
+    // FR_MAN_04
     getAIPerformanceStats,
-    getConfidenceDistribution,
-    getAIModels,
-    updateAIModelStatus,
-    getAICorrections,
-    
+
+    // FR_MAN_05
+    createManagerManualAction,
+
+    // FR_MAN_06
+    createGuestRegistration,
+    checkCitizenInZone,
+
     // Helpers
     getManagerZone,
     getGatesInZone,

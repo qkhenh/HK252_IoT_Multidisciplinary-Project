@@ -2,85 +2,93 @@ const db = require('../libs/db');
 const crypto = require('crypto');
 
 /**
- * Sinh mã OTP 6 số ngẫu nhiên
- * Đảm bảo không trùng với OTP đang active (chưa dùng + chưa hết hạn)
+ * Sinh mã OTP 6 số ngẫu nhiên, đảm bảo unique trong các token còn active
  */
 const generateUniqueOTP = async () => {
     let otp;
     let isUnique = false;
     let attempts = 0;
     const maxAttempts = 10;
-    
+
     while (!isUnique && attempts < maxAttempts) {
-        // Sinh 6 số random
         otp = crypto.randomInt(100000, 999999).toString();
-        
-        // Kiểm tra OTP này có đang active không
-        const checkQuery = `
-            SELECT 1 FROM access_tokens 
-            WHERE otp_code = $1 
-              AND is_used = false 
-              AND valid_until > NOW()
-            LIMIT 1
-        `;
-        const result = await db.query(checkQuery, [otp]);
-        
-        if (result.rows.length === 0) {
-            isUnique = true;
-        }
+
+        const result = await db.query(
+            `SELECT 1 FROM access_tokens
+             WHERE token_data = $1 AND is_used = false AND valid_until > NOW() LIMIT 1`,
+            [otp]
+        );
+
+        if (result.rows.length === 0) isUnique = true;
         attempts++;
     }
-    
+
     if (!isUnique) {
         throw new Error('Không thể sinh mã OTP unique sau nhiều lần thử');
     }
-    
+
     return otp;
 };
 
 /**
- * Tạo OTP mới cho citizen
- * @param {number} citizenId - user_id của citizen
- * @param {number} validMinutes - Thời gian hiệu lực (phút), mặc định 15
+ * Tạo OTP mới cho citizen (token_data = 6 chữ số)
+ * @param {number} citizenId
+ * @param {number} validMinutes
  */
 const createOTP = async (citizenId, validMinutes = 15) => {
     const otpCode = await generateUniqueOTP();
-    
-    const query = `
-        INSERT INTO access_tokens (issued_by, otp_code, valid_from, valid_until, is_used)
-        VALUES ($1, $2, NOW(), NOW() + INTERVAL '${validMinutes} minutes', false)
-        RETURNING token_id, otp_code, valid_from, valid_until
-    `;
-    
-    const result = await db.query(query, [citizenId, otpCode]);
+
+    const result = await db.query(
+        `INSERT INTO access_tokens (issued_by, token_data, valid_from, valid_until, is_used)
+         VALUES ($1, $2, NOW(), NOW() + INTERVAL '${validMinutes} minutes', false)
+         RETURNING token_id, token_data, valid_from, valid_until`,
+        [citizenId, otpCode]
+    );
+
     return result.rows[0];
 };
 
 /**
- * Lấy danh sách OTP đã tạo của citizen
+ * Tạo QR token cho citizen (token_data = UUID, hiệu lực 3 phút) — UC-15
+ * @param {number} citizenId
+ */
+const createQRToken = async (citizenId) => {
+    const uuid = crypto.randomUUID();
+
+    const result = await db.query(
+        `INSERT INTO access_tokens (issued_by, token_data, valid_from, valid_until, is_used)
+         VALUES ($1, $2, NOW(), NOW() + INTERVAL '3 minutes', false)
+         RETURNING token_id, token_data, valid_from, valid_until`,
+        [citizenId, uuid]
+    );
+
+    return result.rows[0];
+};
+
+/**
+ * Lấy danh sách token (OTP + QR) của citizen
  * @param {number} citizenId
  */
 const getOTPsByCitizen = async (citizenId) => {
-    const query = `
-        SELECT 
-            token_id,
-            otp_code,
-            valid_from,
-            valid_until,
-            is_used,
-            used_at,
-            CASE 
-                WHEN is_used = true THEN 'used'
-                WHEN valid_until < NOW() THEN 'expired'
-                ELSE 'active'
-            END as status
-        FROM access_tokens
-        WHERE issued_by = $1
-        ORDER BY valid_from DESC
-        LIMIT 20
-    `;
-    
-    const result = await db.query(query, [citizenId]);
+    const result = await db.query(
+        `SELECT
+             token_id,
+             token_data,
+             valid_from,
+             valid_until,
+             is_used,
+             used_at,
+             CASE
+                 WHEN is_used = true THEN 'used'
+                 WHEN valid_until < NOW() THEN 'expired'
+                 ELSE 'active'
+             END as status
+         FROM access_tokens
+         WHERE issued_by = $1
+         ORDER BY valid_from DESC
+         LIMIT 20`,
+        [citizenId]
+    );
     return result.rows;
 };
 
@@ -103,23 +111,21 @@ const checkCitizenExists = async (userId) => {
  * @param {number} citizenId
  */
 const getVehiclesByCitizen = async (citizenId) => {
-    const query = `
-        SELECT 
-            v.vehicle_id,
-            v.license_plate,
-            v.vehicle_color,
-            v.vehicle_image_url,
-            v.is_active,
-            v.registered_at,
-            vt.type_name,
-            vt.description as type_description
-        FROM vehicles v
-        JOIN vehicle_types vt ON v.type_id = vt.type_id
-        WHERE v.owner_id = $1
-        ORDER BY v.registered_at DESC
-    `;
-    
-    const result = await db.query(query, [citizenId]);
+    const result = await db.query(
+        `SELECT
+             vehicle_id,
+             license_plate,
+             vehicle_type,
+             vehicle_color,
+             is_active,
+             is_inside,
+             last_log_time,
+             registered_at
+         FROM vehicles
+         WHERE owner_user_id = $1
+         ORDER BY registered_at DESC`,
+        [citizenId]
+    );
     return result.rows;
 };
 
@@ -138,26 +144,23 @@ const checkLicensePlateExists = async (licensePlate) => {
 };
 
 /**
- * Lấy danh sách vehicle types
+ * Trả về danh sách loại xe hợp lệ (từ enum vehicle_type_enum)
  */
 const getVehicleTypes = async () => {
-    const query = `SELECT type_id, type_name, description FROM vehicle_types ORDER BY type_id`;
-    const result = await db.query(query);
-    return result.rows;
+    return ['car', 'motorbike', 'bicycle', 'truck', 'emergency'];
 };
 
 /**
  * Đăng ký xe mới
  * @param {Object} params
  */
-const registerVehicle = async ({ ownerId, typeId, licensePlate, vehicleColor, vehicleImageUrl }) => {
-    const query = `
-        INSERT INTO vehicles (owner_id, type_id, license_plate, vehicle_color, vehicle_image_url, is_active)
-        VALUES ($1, $2, $3, $4, $5, false)
-        RETURNING vehicle_id, license_plate, vehicle_color, is_active, registered_at
-    `;
-    
-    const result = await db.query(query, [ownerId, typeId, licensePlate, vehicleColor, vehicleImageUrl]);
+const registerVehicle = async ({ ownerId, vehicleType, licensePlate, vehicleColor }) => {
+    const result = await db.query(
+        `INSERT INTO vehicles (owner_user_id, vehicle_type, license_plate, vehicle_color, is_active)
+         VALUES ($1, $2, $3, $4, false)
+         RETURNING vehicle_id, license_plate, vehicle_type, vehicle_color, is_active, registered_at`,
+        [ownerId, vehicleType, licensePlate, vehicleColor || null]
+    );
     return result.rows[0];
 };
 
@@ -168,14 +171,13 @@ const registerVehicle = async ({ ownerId, typeId, licensePlate, vehicleColor, ve
  * @param {boolean} isActive
  */
 const updateVehicleStatus = async (vehicleId, ownerId, isActive) => {
-    const query = `
-        UPDATE vehicles 
-        SET is_active = $3
-        WHERE vehicle_id = $1 AND owner_id = $2
-        RETURNING vehicle_id, is_active
-    `;
-    
-    const result = await db.query(query, [vehicleId, ownerId, isActive]);
+    const result = await db.query(
+        `UPDATE vehicles
+         SET is_active = $3
+         WHERE vehicle_id = $1 AND owner_user_id = $2
+         RETURNING vehicle_id, is_active`,
+        [vehicleId, ownerId, isActive]
+    );
     return result.rows.length > 0 ? result.rows[0] : null;
 };
 
@@ -188,31 +190,27 @@ const updateVehicleStatus = async (vehicleId, ownerId, isActive) => {
  * @param {number} hostId
  */
 const getGuestRegistrations = async (hostId) => {
-    const query = `
-        SELECT 
-            gr.registration_id,
-            gr.guest_name,
-            gr.guest_license_plate,
-            gr.visit_start_time,
-            gr.visit_end_time,
-            gr.status,
-            gr.purpose,
-            vt.type_name as vehicle_type,
-            CASE 
-                WHEN gr.status = 'pending' THEN 'pending'
-                WHEN gr.status = 'rejected' THEN 'rejected'
-                WHEN gr.visit_end_time < NOW() THEN 'expired'
-                WHEN gr.visit_start_time > NOW() THEN 'upcoming'
-                ELSE 'active'
-            END as current_status
-        FROM guest_registrations gr
-        LEFT JOIN vehicle_types vt ON gr.vehicle_type_id = vt.type_id
-        WHERE gr.host_id = $1
-        ORDER BY gr.visit_start_time DESC
-        LIMIT 50
-    `;
-    
-    const result = await db.query(query, [hostId]);
+    const result = await db.query(
+        `SELECT
+             gr.registration_id,
+             gr.guest_name,
+             gr.guest_license_plate,
+             gr.vehicle_type,
+             gr.visit_start_time,
+             gr.visit_end_time,
+             gr.status,
+             CASE
+                 WHEN gr.status = 'cancelled' THEN 'cancelled'
+                 WHEN gr.visit_end_time < NOW() THEN 'expired'
+                 WHEN gr.visit_start_time > NOW() THEN 'upcoming'
+                 ELSE 'active'
+             END as current_status
+         FROM guest_registrations gr
+         WHERE gr.host_user_id = $1
+         ORDER BY gr.visit_start_time DESC
+         LIMIT 50`,
+        [hostId]
+    );
     return result.rows;
 };
 
@@ -220,39 +218,16 @@ const getGuestRegistrations = async (hostId) => {
  * Đăng ký khách có hẹn trước
  * @param {Object} params
  */
-const registerGuest = async ({ 
-    hostId, 
-    guestName, 
-    guestLicensePlate, 
-    vehicleTypeId, 
-    visitStartTime, 
-    visitEndTime,
-    purpose 
-}) => {
-    const query = `
-        INSERT INTO guest_registrations (
-            host_id, 
-            guest_name, 
-            guest_license_plate, 
-            vehicle_type_id,
-            visit_start_time, 
-            visit_end_time,
-            status,
-            purpose
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, 'approved', $7)
-        RETURNING registration_id, guest_name, guest_license_plate, visit_start_time, visit_end_time, status
-    `;
-    
-    const result = await db.query(query, [
-        hostId, 
-        guestName, 
-        guestLicensePlate, 
-        vehicleTypeId,
-        visitStartTime, 
-        visitEndTime,
-        purpose
-    ]);
+const registerGuest = async ({ hostId, guestName, guestLicensePlate, vehicleType, visitStartTime, visitEndTime }) => {
+    const result = await db.query(
+        `INSERT INTO guest_registrations (
+             host_user_id, guest_name, guest_license_plate, vehicle_type,
+             visit_start_time, visit_end_time, status
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, 'approved')
+         RETURNING registration_id, guest_name, guest_license_plate, visit_start_time, visit_end_time, status`,
+        [hostId, guestName, guestLicensePlate, vehicleType || 'car', visitStartTime, visitEndTime]
+    );
     return result.rows[0];
 };
 
@@ -262,14 +237,13 @@ const registerGuest = async ({
  * @param {number} hostId
  */
 const cancelGuestRegistration = async (registrationId, hostId) => {
-    const query = `
-        UPDATE guest_registrations 
-        SET status = 'cancelled'
-        WHERE registration_id = $1 AND host_id = $2
-        RETURNING registration_id, status
-    `;
-    
-    const result = await db.query(query, [registrationId, hostId]);
+    const result = await db.query(
+        `UPDATE guest_registrations
+         SET status = 'cancelled'
+         WHERE registration_id = $1 AND host_user_id = $2
+         RETURNING registration_id, status`,
+        [registrationId, hostId]
+    );
     return result.rows.length > 0 ? result.rows[0] : null;
 };
 
@@ -282,10 +256,10 @@ const cancelGuestRegistration = async (registrationId, hostId) => {
  */
 const checkGuestPlateConflict = async (licensePlate, startTime, endTime, excludeRegistrationId = null) => {
     let query = `
-        SELECT registration_id, host_id, visit_start_time, visit_end_time
+        SELECT registration_id, host_user_id, visit_start_time, visit_end_time
         FROM guest_registrations
         WHERE UPPER(REPLACE(guest_license_plate, '.', '')) = UPPER(REPLACE($1, '.', ''))
-          AND status IN ('approved', 'pending')
+          AND status IN ('approved')
           AND (
               (visit_start_time <= $2 AND visit_end_time >= $2)
               OR (visit_start_time <= $3 AND visit_end_time >= $3)
@@ -304,9 +278,63 @@ const checkGuestPlateConflict = async (licensePlate, startTime, endTime, exclude
     return result.rows.length > 0 ? result.rows[0] : null;
 };
 
+// ========================
+// ACCESS LOGS (UC-04)
+// ========================
+
+/**
+ * Lấy lịch sử ra vào của tất cả xe thuộc citizen (UC-04)
+ */
+const getMyAccessLogs = async (citizenId, { page = 1, limit = 20, from, to } = {}) => {
+    const offset = (page - 1) * limit;
+    const params = [citizenId];
+    let p = 2;
+    let whereExtra = '';
+
+    if (from) { whereExtra += ` AND al.check_in_time >= $${p}`; params.push(from); p++; }
+    if (to)   { whereExtra += ` AND al.check_in_time <= $${p}`; params.push(to);   p++; }
+
+    const dataResult = await db.query(
+        `SELECT
+             al.log_id,
+             al.check_in_time,
+             al.detected_text,
+             al.access_method,
+             al.is_access_granted,
+             al.action_reason,
+             v.license_plate,
+             l.lane_name,
+             g.gate_name
+         FROM access_logs al
+         JOIN vehicles v ON al.vehicle_id = v.vehicle_id
+         JOIN lanes l ON al.lane_id = l.lane_id
+         JOIN gates g ON l.gate_id = g.gate_id
+         WHERE v.owner_user_id = $1
+           ${whereExtra}
+         ORDER BY al.check_in_time DESC
+         LIMIT $${p} OFFSET $${p + 1}`,
+        [...params, limit, offset]
+    );
+
+    const countResult = await db.query(
+        `SELECT COUNT(*) as total
+         FROM access_logs al
+         JOIN vehicles v ON al.vehicle_id = v.vehicle_id
+         WHERE v.owner_user_id = $1 ${whereExtra}`,
+        params
+    );
+
+    return {
+        total: parseInt(countResult.rows[0].total, 10),
+        page,
+        data: dataResult.rows,
+    };
+};
+
 module.exports = {
     generateUniqueOTP,
     createOTP,
+    createQRToken,
     getOTPsByCitizen,
     checkCitizenExists,
     // Vehicles
@@ -320,4 +348,6 @@ module.exports = {
     registerGuest,
     cancelGuestRegistration,
     checkGuestPlateConflict,
+    // Access Logs
+    getMyAccessLogs,
 };

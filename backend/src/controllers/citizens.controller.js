@@ -1,52 +1,62 @@
 const citizensModel = require('../models/citizens.model');
 
 /**
- * Tạo mã OTP khẩn cấp
+ * Tạo OTP mới
  * POST /api/v1/citizens/tokens
  */
 const createOTP = async (req, res, next) => {
     try {
-        const { citizen_id } = req.body;
-        
-        // Nếu không truyền citizen_id, lấy từ token (user đang đăng nhập)
-        const targetCitizenId = citizen_id || req.user.user_id;
-        
-        // Kiểm tra quyền: chỉ citizen mới tạo được OTP
         if (req.user.role !== 'citizen') {
-            return res.status(403).json({
-                success: false,
-                message: 'Chỉ cư dân mới có thể tạo mã OTP',
-            });
+            return res.status(403).json({ success: false, message: 'Chỉ cư dân mới có thể tạo mã OTP' });
         }
-        
-        // Kiểm tra citizen tồn tại
-        const citizenExists = await citizensModel.checkCitizenExists(targetCitizenId);
+
+        const citizenExists = await citizensModel.checkCitizenExists(req.user.user_id);
         if (!citizenExists) {
-            return res.status(404).json({
-                success: false,
-                message: 'Không tìm thấy thông tin cư dân',
-            });
+            return res.status(404).json({ success: false, message: 'Không tìm thấy thông tin cư dân' });
         }
-        
-        // Kiểm tra: user chỉ được tạo OTP cho chính mình
-        if (targetCitizenId !== req.user.user_id) {
-            return res.status(403).json({
-                success: false,
-                message: 'Bạn chỉ có thể tạo OTP cho chính mình',
-            });
-        }
-        
-        // Tạo OTP (mặc định 15 phút)
-        const token = await citizensModel.createOTP(targetCitizenId, 15);
-        
+
+        const token = await citizensModel.createOTP(req.user.user_id, 15);
+
         res.status(201).json({
             success: true,
             data: {
-                otp_code: token.otp_code,
+                token_id: token.token_id,
+                otp_code: token.token_data,
+                valid_from: token.valid_from,
                 valid_until: token.valid_until,
             },
         });
-        
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * Tạo QR token
+ * POST /api/v1/citizens/qr-code
+ */
+const createQRToken = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'citizen') {
+            return res.status(403).json({ success: false, message: 'Chỉ cư dân mới có thể tạo QR' });
+        }
+
+        const citizenExists = await citizensModel.checkCitizenExists(req.user.user_id);
+        if (!citizenExists) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy thông tin cư dân' });
+        }
+
+        const token = await citizensModel.createQRToken(req.user.user_id);
+
+        res.status(201).json({
+            success: true,
+            data: {
+                token_id: token.token_id,
+                qr_data: token.token_data,
+                valid_from: token.valid_from,
+                valid_until: token.valid_until,
+            },
+        });
     } catch (error) {
         next(error);
     }
@@ -156,10 +166,9 @@ const registerVehicle = async (req, res, next) => {
         // Register vehicle
         const vehicle = await citizensModel.registerVehicle({
             ownerId: req.user.user_id,
-            typeId: type_id,
+            vehicleType: type_id,  // type_id chứa vehicle_type string (car, motorbike...)
             licensePlate: license_plate,
             vehicleColor: vehicle_color || null,
-            vehicleImageUrl: vehicle_image_url || null,
         });
         
         res.status(201).json({
@@ -296,10 +305,9 @@ const registerGuest = async (req, res, next) => {
             hostId: req.user.user_id,
             guestName: guest_name,
             guestLicensePlate: guest_license_plate,
-            vehicleTypeId: vehicle_type_id || 1, // default: car
+            vehicleType: vehicle_type_id || 'car',
             visitStartTime: visit_start_time,
             visitEndTime: visit_end_time,
-            purpose: purpose || null,
         });
         
         res.status(201).json({
@@ -343,10 +351,36 @@ const cancelGuest = async (req, res, next) => {
     }
 };
 
+/**
+ * Lấy lịch sử ra vào của citizen (UC-04)
+ * GET /api/v1/citizens/logs
+ */
+const getMyAccessLogs = async (req, res, next) => {
+    try {
+        const { page = 1, limit = 20, from, to } = req.query;
+
+        const result = await citizensModel.getMyAccessLogs(req.user.user_id, {
+            page: parseInt(page, 10),
+            limit: Math.min(parseInt(limit, 10) || 20, 100),
+            from: from || undefined,
+            to: to || undefined,
+        });
+
+        res.status(200).json({
+            success: true,
+            data: result,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = {
     // OTP
     createOTP,
     getMyOTPs,
+    // QR
+    createQRToken,
     // Vehicles
     getMyVehicles,
     getVehicleTypes,
@@ -356,4 +390,6 @@ module.exports = {
     getMyGuests,
     registerGuest,
     cancelGuest,
+    // Access Logs
+    getMyAccessLogs,
 };

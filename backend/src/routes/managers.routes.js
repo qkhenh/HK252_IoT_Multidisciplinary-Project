@@ -118,32 +118,33 @@ router.get('/gates', managersController.getGates);
 
 /**
  * @route   GET /api/v1/managers/ai/performance
- * @desc    Hiệu năng AI trong 30 ngày (accuracy, processing time, etc.)
+ * @desc    Hiệu năng AI trong 30 ngày (accuracy rate, corrections count)
  * @access  Private - Manager only
  */
 router.get('/ai/performance', managersController.getAIPerformance);
 
-/**
- * @route   GET /api/v1/managers/ai/models
- * @desc    Danh sách AI models
- * @access  Private - Manager only
- */
-router.get('/ai/models', managersController.getAIModels);
+// ============================================================
+// FR_MAN_05 - THAO TÁC THỦ CÔNG (UC-07)
+// ============================================================
 
 /**
- * @route   PATCH /api/v1/managers/ai/models/:id
- * @desc    Cập nhật trạng thái AI model (activate/deactivate)
+ * @route   POST /api/v1/managers/manual-action
+ * @desc    Manager mở/đóng cổng khẩn cấp
  * @access  Private - Manager only
- * @body    { is_active: boolean }
+ * @body    { gate_id, action: 'OPEN'|'CLOSE', action_reason?, note? }
  */
-router.patch('/ai/models/:id', managersController.updateAIModel);
+router.post('/manual-action', managersController.manualAction);
+
+// ============================================================
+// FR_MAN_06 - ĐĂNG KÝ KHÁCH THAY CƯ DÂN (UC-02)
+// ============================================================
 
 /**
- * @route   GET /api/v1/managers/ai/corrections
- * @desc    Danh sách AI predictions đã bị sửa (để retrain)
+ * @route   POST /api/v1/managers/guests
+ * @desc    Manager đăng ký khách thay cho cư dân
  * @access  Private - Manager only
- * @query   limit, page
+ * @body    { host_citizen_id, guest_name, guest_license_plate, vehicle_type?, visit_start_time, visit_end_time }
  */
-router.get('/ai/corrections', managersController.getAICorrections);
+router.post('/guests', managersController.createGuest);
 
 module.exports = router;

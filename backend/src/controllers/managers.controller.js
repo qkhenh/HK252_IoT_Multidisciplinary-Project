@@ -425,17 +425,11 @@ const getAIPerformance = async (req, res, next) => {
         const zone = await getZoneOrFail(req, res);
         if (!zone) return;
         
-        const [stats, confidence] = await Promise.all([
-            managersModel.getAIPerformanceStats(zone.managed_zone_id),
-            managersModel.getConfidenceDistribution(zone.managed_zone_id),
-        ]);
-        
+        const stats = await managersModel.getAIPerformanceStats(zone.managed_zone_id);
+
         res.status(200).json({
             success: true,
-            data: {
-                stats,
-                confidence_distribution: confidence,
-            },
+            data: stats,
         });
     } catch (error) {
         next(error);
@@ -446,56 +440,54 @@ const getAIPerformance = async (req, res, next) => {
  * GET /api/v1/managers/ai/models
  * Danh sách AI models
  */
-const getAIModels = async (req, res, next) => {
-    try {
-        const models = await managersModel.getAIModels();
-        
-        res.status(200).json({
-            success: true,
-            data: models,
-        });
-    } catch (error) {
-        next(error);
-    }
-};
+// ============================================================
+// FR_MAN_05 - THAO TÁC THỦ CÔNG (UC-07)
+// ============================================================
 
 /**
- * PATCH /api/v1/managers/ai/models/:id
- * Cập nhật trạng thái AI model
+ * POST /api/v1/managers/manual-action
+ * Manager mở/đóng cổng khẩn cấp
  */
-const updateAIModel = async (req, res, next) => {
+const manualAction = async (req, res, next) => {
     try {
-        const { id } = req.params;
-        const { is_active } = req.body;
-        
-        if (is_active === undefined) {
+        const zone = await getZoneOrFail(req, res);
+        if (!zone) return;
+
+        const { gate_id, action, action_reason, note } = req.body;
+
+        if (!gate_id || !action) {
             return res.status(400).json({
                 success: false,
-                message: 'Thiếu is_active trong body',
+                message: 'Thiếu thông tin: gate_id và action là bắt buộc',
             });
         }
-        
-        const result = await managersModel.updateAIModelStatus(id, is_active);
-        
-        if (!result) {
-            return res.status(404).json({
+
+        if (!['OPEN', 'CLOSE'].includes(action)) {
+            return res.status(400).json({
                 success: false,
-                message: 'Không tìm thấy AI model',
+                message: 'action không hợp lệ. Chỉ chấp nhận: OPEN, CLOSE',
             });
         }
-        
-        // Ghi audit log
+
+        const result = await managersModel.createManagerManualAction({
+            gateId: parseInt(gate_id, 10),
+            managerId: req.user.user_id,
+            action,
+            actionReason: action_reason || null,
+            note: note || null,
+        });
+
         await managersModel.logAuditAction({
             actorId: req.user.user_id,
-            actionType: is_active ? 'activate_ai_model' : 'deactivate_ai_model',
-            targetTable: 'ai_models',
-            targetId: parseInt(id, 10),
-            actionDetails: JSON.stringify({ model_name: result.model_name, version: result.version }),
+            actionType: action === 'OPEN' ? 'manual_open_gate' : 'manual_close_gate',
+            targetTable: 'gates',
+            targetId: parseInt(gate_id, 10),
+            actionDetails: JSON.stringify({ action, action_reason, note }),
         });
-        
+
         res.status(200).json({
             success: true,
-            message: is_active ? 'Đã kích hoạt model' : 'Đã vô hiệu hóa model',
+            message: action === 'OPEN' ? 'Đã mở cổng và ghi log' : 'Đã ghi log đóng cổng',
             data: result,
         });
     } catch (error) {
@@ -503,26 +495,58 @@ const updateAIModel = async (req, res, next) => {
     }
 };
 
+// ============================================================
+// FR_MAN_06 - ĐĂNG KÝ KHÁCH THAY CƯ DÂN (UC-02)
+// ============================================================
+
 /**
- * GET /api/v1/managers/ai/corrections
- * Danh sách AI bị sửa (để retrain)
+ * POST /api/v1/managers/guests
+ * Manager đăng ký khách cho cư dân
  */
-const getAICorrections = async (req, res, next) => {
+const createGuest = async (req, res, next) => {
     try {
         const zone = await getZoneOrFail(req, res);
         if (!zone) return;
-        
-        const { limit = 100, page = 1 } = req.query;
-        const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
-        
-        const corrections = await managersModel.getAICorrections(zone.managed_zone_id, {
-            limit: parseInt(limit, 10),
-            offset,
+
+        const { host_citizen_id, guest_name, guest_license_plate, vehicle_type, visit_start_time, visit_end_time } = req.body;
+
+        if (!host_citizen_id || !guest_name || !guest_license_plate || !visit_start_time || !visit_end_time) {
+            return res.status(400).json({
+                success: false,
+                message: 'Thiếu thông tin bắt buộc',
+            });
+        }
+
+        const startTime = new Date(visit_start_time);
+        const endTime = new Date(visit_end_time);
+        if (startTime >= endTime) {
+            return res.status(400).json({
+                success: false,
+                message: 'Thời gian bắt đầu phải trước thời gian kết thúc',
+            });
+        }
+
+        const citizenInZone = await managersModel.checkCitizenInZone(host_citizen_id, zone.managed_zone_id);
+        if (!citizenInZone) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy cư dân hoặc cư dân không thuộc zone quản lý',
+            });
+        }
+
+        const registration = await managersModel.createGuestRegistration({
+            hostCitizenId: host_citizen_id,
+            guestName: guest_name,
+            guestLicensePlate: guest_license_plate,
+            vehicleType: vehicle_type || 'car',
+            visitStartTime: visit_start_time,
+            visitEndTime: visit_end_time,
         });
-        
-        res.status(200).json({
+
+        res.status(201).json({
             success: true,
-            data: corrections,
+            message: 'Đã đăng ký khách thành công',
+            data: registration,
         });
     } catch (error) {
         next(error);
@@ -530,27 +554,30 @@ const getAICorrections = async (req, res, next) => {
 };
 
 module.exports = {
-    // FR_MAN_01 - Vehicle Approval
+    // FR_MAN_01
     getPendingVehicles,
     approveVehicle,
     rejectVehicle,
-    
-    // FR_MAN_02 - Analytics
+
+    // FR_MAN_02
     getOverview,
     getTrafficByDay,
     getTrafficByHour,
     getVehicleTypes,
     getAccessMethods,
-    
-    // FR_MAN_03 - Access Logs
+
+    // FR_MAN_03
     searchLogs,
     getLogDetail,
     getAuditLogs,
     getGates,
-    
-    // FR_MAN_04 - AI Performance
+
+    // FR_MAN_04
     getAIPerformance,
-    getAIModels,
-    updateAIModel,
-    getAICorrections,
+
+    // FR_MAN_05
+    manualAction,
+
+    // FR_MAN_06
+    createGuest,
 };

@@ -1,84 +1,54 @@
 const guardsModel = require('../models/guards.model');
 
 /**
- * Xác minh mã OTP
+ * Xác minh mã OTP thủ công
  * POST /api/v1/guards/verify-otp
  */
 const verifyOTP = async (req, res, next) => {
     try {
-        const { gate_id, guard_id, otp_code } = req.body;
-        
-        // Validate input
-        if (!gate_id || !guard_id || !otp_code) {
+        const { lane_id, otp_code } = req.body;
+        const guardId = req.user.user_id;
+
+        if (!lane_id || !otp_code) {
             return res.status(400).json({
                 success: false,
-                message: 'Thiếu thông tin: gate_id, guard_id, otp_code là bắt buộc',
+                message: 'Thiếu thông tin: lane_id và otp_code là bắt buộc',
             });
         }
-        
-        // Validate OTP format (6 số)
+
         if (!/^\d{6}$/.test(otp_code)) {
             return res.status(400).json({
                 success: false,
                 message: 'Mã OTP phải là 6 chữ số',
             });
         }
-        
-        // Kiểm tra guard tồn tại
-        const guardCheck = await guardsModel.checkGuardAssignment(guard_id, gate_id);
+
+        const guardCheck = await guardsModel.checkGuardAssignment(guardId);
         if (!guardCheck.exists) {
-            return res.status(404).json({
-                success: false,
-                message: 'Không tìm thấy thông tin bảo vệ',
-            });
+            return res.status(404).json({ success: false, message: 'Không tìm thấy thông tin bảo vệ' });
         }
-        
-        // Tìm OTP
+
         const token = await guardsModel.findValidOTP(otp_code);
-        
+
         if (!token) {
-            return res.status(404).json({
-                success: false,
-                data: {
-                    action: 'KEEP_CLOSED',
-                    message: 'Mã OTP không tồn tại',
-                },
-            });
+            return res.status(404).json({ success: false, data: { action: 'KEEP_CLOSED', message: 'Mã OTP không tồn tại' } });
         }
-        
-        // Kiểm tra OTP đã sử dụng chưa
         if (token.is_used) {
-            return res.status(400).json({
-                success: false,
-                data: {
-                    action: 'KEEP_CLOSED',
-                    message: 'Mã OTP đã được sử dụng trước đó',
-                },
-            });
+            return res.status(400).json({ success: false, data: { action: 'KEEP_CLOSED', message: 'Mã OTP đã được sử dụng' } });
         }
-        
-        // Kiểm tra OTP còn hiệu lực không (dùng kết quả từ DB để tránh timezone issues)
         if (token.is_expired) {
-            return res.status(400).json({
-                success: false,
-                data: {
-                    action: 'KEEP_CLOSED',
-                    message: 'Mã OTP đã hết hạn',
-                },
-            });
+            return res.status(400).json({ success: false, data: { action: 'KEEP_CLOSED', message: 'Mã OTP đã hết hạn' } });
         }
-        
-        // OTP hợp lệ → Đánh dấu đã sử dụng
+
         await guardsModel.markOTPAsUsed(token.token_id);
-        
-        // Ghi log access
+
         const accessLog = await guardsModel.logOTPAccess({
-            gateId: gate_id,
-            guardId: guard_id,
-            guestRegistrationId: null,
-            note: `OTP verified. Issued by: ${token.issued_by_name} (${token.house_number || 'N/A'})`,
+            laneId: lane_id,
+            guardId,
+            tokenId: token.token_id,
+            note: `OTP verified by guard. Issued by: ${token.issued_by_name} (${token.house_number || 'N/A'})`,
         });
-        
+
         res.status(200).json({
             success: true,
             data: {
@@ -93,7 +63,6 @@ const verifyOTP = async (req, res, next) => {
                 },
             },
         });
-        
     } catch (error) {
         next(error);
     }
@@ -105,128 +74,91 @@ const verifyOTP = async (req, res, next) => {
  */
 const manualAction = async (req, res, next) => {
     try {
-        const { gate_id, guard_id, action_type, note, image_base64 } = req.body;
-        
-        // Validate required fields
-        if (!gate_id || !guard_id || !action_type) {
+        const { lane_id, action_type, action_reason, note, image_base64 } = req.body;
+        const guardId = req.user.user_id;
+
+        if (!lane_id || !action_type) {
             return res.status(400).json({
                 success: false,
-                message: 'Thiếu thông tin: gate_id, guard_id, action_type là bắt buộc',
+                message: 'Thiếu thông tin: lane_id và action_type là bắt buộc',
             });
         }
-        
-        // Validate action_type
+
         if (!guardsModel.VALID_ACTION_TYPES.includes(action_type)) {
             return res.status(400).json({
                 success: false,
                 message: `action_type không hợp lệ. Chỉ chấp nhận: ${guardsModel.VALID_ACTION_TYPES.join(', ')}`,
             });
         }
-        
-        // Kiểm tra gate tồn tại
-        const gate = await guardsModel.getGateInfo(gate_id);
-        if (!gate) {
-            return res.status(404).json({
-                success: false,
-                message: 'Không tìm thấy cổng',
-            });
+
+        const lane = await guardsModel.getLaneInfo(lane_id);
+        if (!lane) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy lane' });
         }
-        
-        // Kiểm tra guard tồn tại
-        const guardCheck = await guardsModel.checkGuardAssignment(guard_id, gate_id);
-        if (!guardCheck.exists) {
-            return res.status(404).json({
-                success: false,
-                message: 'Không tìm thấy thông tin bảo vệ',
-            });
-        }
-        
-        // Xử lý ảnh nếu có
+
         let imageBuffer = null;
         if (image_base64) {
-            const base64Data = image_base64.includes(',') 
-                ? image_base64.split(',')[1] 
-                : image_base64;
+            const base64Data = image_base64.includes(',') ? image_base64.split(',')[1] : image_base64;
             imageBuffer = Buffer.from(base64Data, 'base64');
         }
-        
-        // Ghi log
+
         const logResult = await guardsModel.logManualAction({
-            gateId: gate_id,
-            guardId: guard_id,
+            laneId: lane_id,
+            guardId,
             actionType: action_type,
-            note: note || `Manual ${action_type} by guard`,
+            actionReason: action_reason || null,
+            note: note || null,
             imageSnapshotBuffer: imageBuffer,
         });
-        
-        // Response
-        const actionMessage = action_type === 'open_barrier' 
-            ? 'Đã mở cổng và ghi nhận thao tác thủ công.' 
-            : 'Đã ghi nhận sự kiện (không mở cổng).';
-        
+
         res.status(200).json({
             success: true,
-            message: 'Đã ghi nhận thao tác thủ công thành công.',
+            message: action_type === 'open_barrier' ? 'Đã mở cổng và ghi nhận thao tác thủ công.' : 'Đã ghi nhận sự kiện.',
             data: {
                 action: action_type === 'open_barrier' ? 'OPEN' : 'KEEP_CLOSED',
-                message: actionMessage,
                 log_id: logResult.log_id,
                 check_in_time: logResult.check_in_time,
             },
         });
-        
     } catch (error) {
         next(error);
     }
 };
 
 /**
- * Lấy lịch sử access logs gần đây (real-time monitoring)
- * GET /api/v1/guards/logs?gate_id=1&limit=20
+ * Lấy lịch sử access logs gần đây
+ * GET /api/v1/guards/logs?lane_id=MAIN-IN&limit=20
  */
 const getRecentLogs = async (req, res, next) => {
     try {
-        const { gate_id, limit = 20 } = req.query;
-        
-        if (!gate_id) {
-            return res.status(400).json({
-                success: false,
-                message: 'Thiếu gate_id',
-            });
+        const { lane_id, limit = 20 } = req.query;
+
+        if (!lane_id) {
+            return res.status(400).json({ success: false, message: 'Thiếu lane_id' });
         }
-        
-        const logs = await guardsModel.getRecentAccessLogs(
-            parseInt(gate_id, 10),
-            Math.min(parseInt(limit, 10) || 20, 100)
-        );
-        
-        res.status(200).json({
-            success: true,
-            data: logs,
-        });
-        
+
+        const logs = await guardsModel.getRecentAccessLogs(lane_id, Math.min(parseInt(limit, 10) || 20, 100));
+
+        res.status(200).json({ success: true, data: logs });
     } catch (error) {
         next(error);
     }
 };
 
 /**
- * Lấy thống kê nhanh cho cổng
- * GET /api/v1/guards/stats?gate_id=1
+ * Lấy thống kê nhanh cho lane
+ * GET /api/v1/guards/stats?lane_id=MAIN-IN
  */
 const getGateStats = async (req, res, next) => {
     try {
-        const { gate_id } = req.query;
-        
-        if (!gate_id) {
-            return res.status(400).json({
-                success: false,
-                message: 'Thiếu gate_id',
-            });
+        const { lane_id } = req.query;
+
+        if (!lane_id) {
+            return res.status(400).json({ success: false, message: 'Thiếu lane_id' });
         }
-        
-        const stats = await guardsModel.getGateStats(parseInt(gate_id, 10));
-        
+
+        const stats = await guardsModel.getGateStats(lane_id);
+
         res.status(200).json({
             success: true,
             data: {
@@ -236,14 +168,13 @@ const getGateStats = async (req, res, next) => {
                 denied_24h: parseInt(stats.denied_24h, 10),
             },
         });
-        
     } catch (error) {
         next(error);
     }
 };
 
 /**
- * Lấy danh sách lý do thường gặp (cho dropdown)
+ * Lấy danh sách lý do thường gặp
  * GET /api/v1/guards/action-reasons
  */
 const getActionReasons = async (req, res, next) => {
@@ -260,10 +191,90 @@ const getActionReasons = async (req, res, next) => {
     }
 };
 
+/**
+ * Guard đăng ký khách thay cư dân (UC-02)
+ * POST /api/v1/guards/guests
+ */
+const registerGuest = async (req, res, next) => {
+    try {
+        const { host_citizen_id, guest_name, guest_license_plate, vehicle_type, visit_start_time, visit_end_time } = req.body;
+
+        if (!host_citizen_id || !guest_name || !guest_license_plate || !visit_start_time || !visit_end_time) {
+            return res.status(400).json({
+                success: false,
+                message: 'Thiếu thông tin bắt buộc',
+            });
+        }
+
+        const startTime = new Date(visit_start_time);
+        const endTime = new Date(visit_end_time);
+        if (startTime >= endTime) {
+            return res.status(400).json({ success: false, message: 'Thời gian bắt đầu phải trước thời gian kết thúc' });
+        }
+
+        const citizenExists = await guardsModel.checkCitizenExists(host_citizen_id);
+        if (!citizenExists) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy cư dân' });
+        }
+
+        const registration = await guardsModel.createGuestRegistration({
+            hostCitizenId: host_citizen_id,
+            guestName: guest_name,
+            guestLicensePlate: guest_license_plate,
+            vehicleType: vehicle_type || 'car',
+            visitStartTime: visit_start_time,
+            visitEndTime: visit_end_time,
+        });
+
+        res.status(201).json({
+            success: true,
+            message: 'Đã đăng ký khách thành công',
+            data: registration,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * Guard báo cáo biển số AI đọc sai (UC-08)
+ * POST /api/v1/guards/ai-corrections
+ */
+const addAICorrection = async (req, res, next) => {
+    try {
+        const { log_id, corrected_plate_text } = req.body;
+        const guardId = req.user.user_id;
+
+        if (!log_id || !corrected_plate_text) {
+            return res.status(400).json({
+                success: false,
+                message: 'Thiếu thông tin: log_id và corrected_plate_text là bắt buộc',
+            });
+        }
+
+        const log = await guardsModel.getLogById(log_id);
+        if (!log) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy log' });
+        }
+
+        const result = await guardsModel.addAICorrection(log_id, guardId, corrected_plate_text);
+
+        res.status(200).json({
+            success: true,
+            message: 'Đã ghi nhận sửa biển số',
+            data: result,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = {
     verifyOTP,
     manualAction,
     getRecentLogs,
     getGateStats,
     getActionReasons,
+    registerGuest,
+    addAICorrection,
 };
