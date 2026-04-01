@@ -6,8 +6,8 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 Servo sVao, sRa;
 
 // --- ANGLE CONFIGURATION ---
-const int CLOSED = 180;   
-const int OPEN   = 70; 
+const int GATE_DOWN = 180; // Closed position
+const int GATE_UP   = 70;  // Open position
 
 // Hardware Pins
 const int buzzer = 10;
@@ -26,22 +26,60 @@ bool vaoOpen = false;
 bool raOpen = false;
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(9600); 
   lcd.init(); lcd.backlight();
   
   sVao.attach(6);
   sRa.attach(7);
   pinMode(buzzer, OUTPUT);
   
-  // Initial Positions
-  sVao.write(CLOSED);
-  sRa.write(OPEN);
+  sVao.write(GATE_DOWN);
+  sRa.write(GATE_DOWN);
   
   lcd.print("CC04 Group 8");
   lcd.setCursor(0, 1);
   lcd.print("System Ready");
   delay(2000);
-  lcd.clear();
+  resetLCD();
+}
+
+void loop() {
+  // --- 1. THE BRIDGE: LISTEN FOR PYTHON COMMANDS ---
+  if (Serial.available() > 0) {
+    String data = Serial.readStringUntil('\n');
+    data.trim();
+
+    // If Python sends "ENTRY_GO", the AI has verified the plate
+    if (data == "ENTRY_GO" && !vaoOpen) {
+      sVao.write(GATE_UP);
+      vaoOpen = true;
+      updateLCD("AI VERIFIED", "Welcome!");
+      beep(1);
+    }
+  }
+
+  // --- 2. SCAN SENSORS ---
+  int dInA = getDist(trigInA, echoInA);
+  int dOutA = getDist(trigOutA, echoOutA);
+
+  // --- 3. ENTRY LOGIC (HYBRID) ---
+  
+  // If car is at the gate but NOT yet authorized by AI
+  if (dInA < threshold && !vaoOpen) {
+    updateLCD("ENTRY: CAR WAIT", "Scanning Plate...");
+    // We do NOT open the gate here. We wait for Python.
+  }
+
+  // If gate is open and car has passed the EXIT sensor (OutA)
+  if (dOutA < threshold && vaoOpen) {
+    delay(1000); // Allow car to fully clear the gate
+    sVao.write(GATE_DOWN);
+    vaoOpen = false;
+    updateLCD("GATE CLOSING", "Thank You");
+    beep(2);
+    delay(2000);
+    resetLCD();
+  }
 }
 
 // Stable Distance Function
@@ -56,48 +94,6 @@ int getDist(int t, int e) {
   return duration * 0.034 / 2;
 }
 
-void loop() {
-  // --- SCAN ALL SENSORS ---
-  int dInA = getDist(trigInA, echoInA);
-  int dOutA = getDist(trigOutA, echoOutA);
-  int dInB = getDist(trigInB, echoInB);
-  int dOutB = getDist(trigOutB, echoOutB);
-
-  // --- ENTRY LOGIC (LANE A) ---
-  if (dInA < threshold && !vaoOpen) {
-    sVao.write(CLOSED);
-    vaoOpen = true;
-    updateLCD("Entry: OPEN", "Scanning License Plate");
-    beep(1);
-  }
-  if (dOutA < threshold && vaoOpen) {
-    delay(800); 
-    sVao.write(OPEN);
-    vaoOpen = false;
-    updateLCD("Entry: CLOSED", "Welcome Mr.John");
-    beep(2);
-    delay(2000);
-    resetLCD();
-  }
-
-  // --- EXIT LOGIC (LANE B) ---
-  if (dInB < threshold && !raOpen) {
-    sRa.write(CLOSED);
-    raOpen = true;
-    updateLCD("Exit: OPEN", "Safe Travels");
-    beep(1);
-  }
-  if (dOutB < threshold && raOpen) {
-    delay(800);
-    sRa.write(OPEN);
-    raOpen = false;
-    beep(2);
-    delay(2000);
-    resetLCD();
-  }
-}
-
-// Helper Functions
 void beep(int t) {
   for(int i=0; i<t; i++) {
     digitalWrite(buzzer, HIGH); delay(100);
