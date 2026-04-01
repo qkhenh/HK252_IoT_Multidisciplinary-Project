@@ -44,16 +44,19 @@ void setup() {
 }
 
 void loop() {
-  // --- 1. THE BRIDGE: LISTEN FOR PYTHON COMMANDS ---
+  // --- NEW: LISTEN FOR COMMANDS FROM PYTHON ---
   if (Serial.available() > 0) {
-    String data = Serial.readStringUntil('\n');
-    data.trim();
+    String input = Serial.readStringUntil('\n');
+    input.trim();
 
-    // If Python sends "ENTRY_GO", the AI has verified the plate
-    if (data == "ENTRY_GO" && !vaoOpen) {
-      sVao.write(GATE_UP);
+    // Check for "ENTRY_GO:Name"
+    int separator = input.indexOf(':');
+    if (separator != -1 && input.substring(0, separator) == "ENTRY_GO") {
+      String residentName = input.substring(separator + 1);
+      
+      sVao.write(GATE_UP); // Open the gate (Angle 70)
       vaoOpen = true;
-      updateLCD("AI VERIFIED", "Welcome!");
+      updateLCD("WELCOME,", residentName); // Display name from Backend
       beep(1);
     }
   }
@@ -63,16 +66,14 @@ void loop() {
   int dOutA = getDist(trigOutA, echoOutA);
 
   // --- 3. ENTRY LOGIC (HYBRID) ---
-  
   // If car is at the gate but NOT yet authorized by AI
   if (dInA < threshold && !vaoOpen) {
-    updateLCD("ENTRY: CAR WAIT", "Scanning Plate...");
-    // We do NOT open the gate here. We wait for Python.
+    updateLCD("ENTRY DETECTED", "Scanning Plate...");
   }
 
   // If gate is open and car has passed the EXIT sensor (OutA)
   if (dOutA < threshold && vaoOpen) {
-    delay(1000); // Allow car to fully clear the gate
+    delay(1000); 
     sVao.write(GATE_DOWN);
     vaoOpen = false;
     updateLCD("GATE CLOSING", "Thank You");
