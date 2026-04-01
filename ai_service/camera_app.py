@@ -9,7 +9,7 @@ from ai_engine import extract_license_plates
 # CONFIGURATION
 # ==========================================
 # Node.js backend URL
-NODEJS_BACKEND_URL = "http://localhost:3000/api/v1/gates/check-in"
+NODEJS_BACKEND_URL = "http://localhost:5000/api/v1/gates/check-in"
 # Gate identifier
 GATE_ID = 1 
 
