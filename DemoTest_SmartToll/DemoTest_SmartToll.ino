@@ -6,7 +6,7 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 Servo sVao, sRa;
 
 // --- ANGLE CONFIGURATION ---
-const int CLOSED = -180;   
+const int CLOSED = 180;   
 const int OPEN   = 70; 
 
 // Hardware Pins
