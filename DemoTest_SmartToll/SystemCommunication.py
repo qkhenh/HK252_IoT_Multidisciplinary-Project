@@ -12,7 +12,7 @@ from ai_engine import extract_license_plates
 # ==========================================
 NODEJS_BACKEND_URL = "http://localhost:3000/api/v1/gates/check-in"
 GATE_ID = 1 
-ARDUINO_PORT = 'COM3' # Change this if your COM port is different
+ARDUINO_PORT = 'COM5' # Change this if your COM port is different
 BAUD_RATE = 9600
 
 # --- NEW: INITIALIZE SERIAL ---
