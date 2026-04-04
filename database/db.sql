@@ -148,10 +148,10 @@ CREATE TABLE citizens (
 );
 
 -- Thông tin đặc thù của Bảo vệ
--- assigned_lane_id: làn xe Guard được phân công trực
+-- assigned_gate_id: cổng xe Guard được phân công trực
 CREATE TABLE security_guards (
     user_id          INT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
-    assigned_lane_id VARCHAR(30) REFERENCES lanes(lane_id) ON DELETE SET NULL,
+    assigned_gate_id VARCHAR(30) REFERENCES gates(gate_id) ON DELETE SET NULL,
     employee_code    VARCHAR(20) UNIQUE,
     shift_start      TIME,
     shift_end        TIME
@@ -228,7 +228,7 @@ CREATE TABLE access_tokens (
 --   image_snapshot_data: ảnh chụp tại thời điểm ra vào (BYTEA)
 CREATE TABLE access_logs (
     log_id              SERIAL PRIMARY KEY,
-    lane_id             VARCHAR(30) REFERENCES lanes(lane_id) ON DELETE SET NULL,
+    lane_id             VARCHAR(30) REFERENCES gates(gate_id) ON DELETE SET NULL,
     vehicle_id          INT REFERENCES vehicles(vehicle_id) ON DELETE SET NULL,
     guest_reg_id        INT REFERENCES guest_registrations(registration_id) ON DELETE SET NULL,
     token_id            INT REFERENCES access_tokens(token_id) ON DELETE SET NULL,
