@@ -236,7 +236,6 @@ CREATE TABLE access_logs (
     check_in_time       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     detected_text       VARCHAR(100),
     access_method       access_method_enum NOT NULL,
-    is_access_granted   BOOLEAN DEFAULT FALSE,
     action_reason       VARCHAR(50),         -- UC-07: emergency_vehicle, shipper_delivery, ai_error...
     note                TEXT,                -- UC-08: biển số đã được Guard sửa
     image_snapshot_data BYTEA

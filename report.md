@@ -739,7 +739,7 @@ CREATE TYPE access_method_enum AS ENUM ('ai_plate_recognition', 'ai_camera_otp',
 
 | Table | Description | Columns |
 |-------|-------------|---------|
-| **access_logs** | Log ra vào | log_id, **gate_id (FK)**, vehicle_id, guest_reg_id, **token_id (FK → access_tokens)**, guard_id, check_in_time, **detected_text** *(chuỗi OCR thô: biển số / OTP 6 số / UUID QR)*, image_snapshot_data (BYTEA), access_method, is_access_granted, **action_reason** *(lý do mở thủ công — UC-07)* |
+| **access_logs** | Log ra vào | log_id, **gate_id (FK)**, vehicle_id, guest_reg_id, **token_id (FK → access_tokens)**, guard_id, check_in_time, **detected_text** *(chuỗi OCR thô: biển số / OTP 6 số / UUID QR)*, image_snapshot_data (BYTEA), access_method, **action_reason** *(lý do mở thủ công — UC-07)* |
 | **system_audit_logs** | Audit trail | audit_id, actor_id, action_type, target_table, target_id, action_details, performed_at |
 
 > **Đã xóa hoàn toàn:** `vehicle_types`, `ai_predictions`, `ai_models`.
