@@ -1,160 +1,181 @@
-create type user_role_enum as enum ('citizen', 'guard', 'manager');
-create type vehicle_type_enum as enum ('car', 'motorbike', 'bicycle', 'truck', 'emergency');
-create type gate_direction_enum as enum ('inbound', 'outbound');
-create type access_method_enum as enum ('ai_recognition', 'card_rfid', 'qrcode', 'manual_otp', 'manual_guard');
 
-create table zones ( -- Quản lý zone 
-    zone_id serial primary key,
-    zone_name varchar(50) not null,
-    description text,
-    created_at timestamp default current_timestamp
+DROP TABLE IF EXISTS system_audit_logs CASCADE;
+DROP TABLE IF EXISTS ai_predictions   CASCADE;
+DROP TABLE IF EXISTS access_logs      CASCADE;
+DROP TABLE IF EXISTS access_tokens    CASCADE;
+DROP TABLE IF EXISTS guest_registrations CASCADE;
+DROP TABLE IF EXISTS vehicles         CASCADE;
+DROP TABLE IF EXISTS managers         CASCADE;
+DROP TABLE IF EXISTS security_guards  CASCADE;
+DROP TABLE IF EXISTS citizens         CASCADE;
+DROP TABLE IF EXISTS iot_devices      CASCADE;
+DROP TABLE IF EXISTS lanes            CASCADE;
+DROP TABLE IF EXISTS houses           CASCADE;
+DROP TABLE IF EXISTS gates            CASCADE;
+DROP TABLE IF EXISTS users            CASCADE;
+DROP TABLE IF EXISTS vehicle_types    CASCADE;
+DROP TABLE IF EXISTS ai_models        CASCADE;
+DROP TABLE IF EXISTS zones            CASCADE;
+
+-- DROP CÁC ENUM
+DROP TYPE IF EXISTS user_role_enum      CASCADE;
+DROP TYPE IF EXISTS vehicle_type_enum   CASCADE;
+DROP TYPE IF EXISTS direction_enum      CASCADE;
+DROP TYPE IF EXISTS gate_direction_enum CASCADE;  -- tên cũ, xóa nếu còn tồn tại
+DROP TYPE IF EXISTS access_method_enum  CASCADE;
+
+CREATE TYPE user_role_enum AS ENUM ('citizen', 'guard', 'manager');
+
+CREATE TYPE vehicle_type_enum AS ENUM ('car', 'motorbike', 'bicycle', 'truck', 'emergency');
+
+CREATE TYPE direction_enum AS ENUM ('inbound', 'outbound');
+
+CREATE TYPE access_method_enum AS ENUM (
+    'ai_plate_recognition',
+    'ai_camera_otp',
+    'ai_camera_qr',
+    'manual_guard'
 );
 
-create table houses ( -- Quản lý nhà
-    house_id serial primary key,
-    zone_id int references zones(zone_id) on delete set null,
-    house_number varchar(20) not null,
-    block_number varchar(20),
-    floor_number int,
-    created_at timestamp default current_timestamp
+CREATE TABLE zones (
+    zone_id     SERIAL PRIMARY KEY,
+    zone_name   VARCHAR(50) NOT NULL,
+    description TEXT,
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-create table gates ( -- Quản lý cổng
-    gate_id serial primary key,
-    zone_id int references zones(zone_id) on delete cascade,
-    gate_name varchar(50) not null,
-    direction gate_direction_enum not null,
-    is_active boolean default true
+CREATE TABLE houses (
+    house_id     SERIAL PRIMARY KEY,
+    zone_id      INT REFERENCES zones(zone_id) ON DELETE SET NULL,
+    house_number VARCHAR(20) NOT NULL,
+    block_number VARCHAR(20),
+    floor_number INT,
+    created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-create table iot_devices ( -- Quản lý thiết bị 
-    device_id serial primary key,
-    gate_id int references gates(gate_id) on delete cascade,
-    device_name varchar(100),
-    device_type varchar(50),
-    ip_address varchar(45),
-    mac_address varchar(17),
-    status varchar(20) default 'online',
-    last_ping timestamp
+CREATE TABLE gates (
+    gate_id   SERIAL PRIMARY KEY,
+    zone_id   INT REFERENCES zones(zone_id) ON DELETE CASCADE,
+    gate_name VARCHAR(50) NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE
 );
 
-create table users ( -- Quản lý người dùng 
-    user_id serial primary key,
-    username varchar(50) unique not null,
-    password_hash varchar(255) not null,
-    full_name varchar(100) not null,
-    email varchar(100),
-    role user_role_enum not null,
-    avatar_url text,
-    created_at timestamp default current_timestamp
+CREATE TABLE lanes (
+    lane_id   VARCHAR(30) PRIMARY KEY,
+    gate_id   INT REFERENCES gates(gate_id) ON DELETE CASCADE,
+    lane_name VARCHAR(100) NOT NULL,
+    direction direction_enum NOT NULL
 );
 
-create table citizens (
-    user_id int primary key references users(user_id) on delete cascade,
-    house_id int references houses(house_id) on delete set null,
-    phone_number varchar(15) unique,
-    identity_card_number varchar(20),
-    is_house_owner boolean default false
+-- Thiết bị IoT gắn vào từng làn xe (camera, barrier controller...)
+CREATE TABLE iot_devices (
+    device_id   SERIAL PRIMARY KEY,
+    lane_id     VARCHAR(30) REFERENCES lanes(lane_id) ON DELETE CASCADE,
+    device_name VARCHAR(100),
+    device_type VARCHAR(50),
+    ip_address  VARCHAR(45),
+    mac_address VARCHAR(17),
+    status      VARCHAR(20) DEFAULT 'online',
+    last_ping   TIMESTAMP
 );
 
-create table security_guards (
-    user_id int primary key references users(user_id) on delete cascade,
-    assigned_gate_id int references gates(gate_id),
-    employee_code varchar(20) unique,
-    shift_start time,
-    shift_end time
+CREATE TABLE users (
+    user_id       SERIAL PRIMARY KEY,
+    username      VARCHAR(50) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    full_name     VARCHAR(100) NOT NULL,
+    email         VARCHAR(100),
+    role          user_role_enum NOT NULL,
+    avatar_url    TEXT,
+    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-drop table if exists managers cascade; 
-
-create table managers ( -- Quản lý zone
-    user_id int primary key references users(user_id) on delete cascade,
-    managed_zone_id int references zones(zone_id) on delete set null, 
-    department_name varchar(50) 
+-- Thông tin đặc thù của Cư dân
+CREATE TABLE citizens (
+    user_id              INT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+house_id             INT REFERENCES houses(house_id) ON DELETE SET NULL,
+    phone_number         VARCHAR(15) UNIQUE,
+    identity_card_number VARCHAR(20),
+    is_house_owner       BOOLEAN DEFAULT FALSE
 );
 
-create table vehicle_types ( -- Loại xe. Vd truck thì cổng không mở
-    type_id serial primary key,
-    type_name vehicle_type_enum not null,
-    description text
+-- Thông tin đặc thù của Bảo vệ
+-- assigned_gate_id: cổng xe Guard được phân công trực
+CREATE TABLE security_guards (
+    user_id          INT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+    assigned_gate_id VARCHAR(30) REFERENCES gates(gate_id) ON DELETE SET NULL,
+    employee_code    VARCHAR(20) UNIQUE,
+    shift_start      TIME,
+    shift_end        TIME
 );
 
-create table vehicles ( -- Whitelist của citizen
-    vehicle_id serial primary key,
-    owner_id int references citizens(user_id) on delete cascade,
-    type_id int references vehicle_types(type_id),
-    license_plate varchar(20) unique not null,
-    vehicle_color varchar(30),
-    vehicle_image_url text,
-    is_active boolean default true,
-    registered_at timestamp default current_timestamp
+-- Thông tin đặc thù của Ban Quản lý
+CREATE TABLE managers (
+    user_id         INT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+    managed_zone_id INT REFERENCES zones(zone_id) ON DELETE SET NULL,
+    department_name VARCHAR(50)
 );
 
-create table guest_registrations ( -- Whitelist cho edge case 2.1
-    registration_id serial primary key,
-    host_id int references citizens(user_id) on delete cascade,
-    guest_name varchar(100),
-    guest_license_plate varchar(20),
-    vehicle_type_id int references vehicle_types(type_id),
-    visit_start_time timestamp not null,
-    visit_end_time timestamp not null,
-    status varchar(20) default 'pending',
-    purpose text
+CREATE TABLE vehicles (
+    vehicle_id    SERIAL PRIMARY KEY,
+    owner_user_id INT REFERENCES users(user_id) ON DELETE CASCADE,
+    vehicle_type  vehicle_type_enum NOT NULL,
+    license_plate VARCHAR(20) UNIQUE NOT NULL,
+    vehicle_color VARCHAR(30),
+    is_inside     BOOLEAN DEFAULT FALSE,     -- anti-passback flag (UC-13)
+    is_active     BOOLEAN DEFAULT FALSE,     -- false = pending approval
+    last_log_time TIMESTAMP,
+    registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-create table access_tokens ( -- CHo edge case 2.2
-    token_id serial primary key,
-    issued_by int references citizens(user_id) on delete cascade,
-    otp_code varchar(10) not null,
-    valid_from timestamp default current_timestamp,
-    valid_until timestamp not null,
-    is_used boolean default false,
-    used_at timestamp
+CREATE TABLE guest_registrations (
+    registration_id  SERIAL PRIMARY KEY,
+    host_user_id     INT REFERENCES users(user_id) ON DELETE CASCADE,
+    guest_name       VARCHAR(100),
+    vehicle_type     vehicle_type_enum,
+    guest_license_plate VARCHAR(20),
+    visit_start_time TIMESTAMP NOT NULL,
+    visit_end_time   TIMESTAMP NOT NULL,
+    status           VARCHAR(20) DEFAULT 'approved',
+    CONSTRAINT chk_visit_time CHECK (visit_end_time > visit_start_time)
 );
 
-create table ai_models ( -- Đánh giá model
-    model_id serial primary key,
-    model_name varchar(50) not null,
-    version varchar(20),
-    accuracy_rate float,
-    is_active boolean default false,
-    created_at timestamp default current_timestamp
+-- Mã token ngắn hạn: OTP 6 số (UC-03) hoặc UUID QR (UC-15)
+--   token_data: '482917' cho OTP, hoặc UUID string cho QR
+--   issued_by: chỉ Citizen tạo token (UC-03 & UC-15)
+CREATE TABLE access_tokens (
+    token_id    SERIAL PRIMARY KEY,
+    issued_by   INT REFERENCES citizens(user_id) ON DELETE CASCADE,
+    token_data  VARCHAR(255) UNIQUE NOT NULL,
+    valid_from  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    valid_until TIMESTAMP NOT NULL,
+    is_used     BOOLEAN DEFAULT FALSE,
+    used_at     TIMESTAMP
 );
 
-create table access_logs ( -- Cơ chế logging
-    log_id serial primary key,
-    gate_id int references gates(gate_id),
-    vehicle_id int references vehicles(vehicle_id) on delete set null,
-    guest_registration_id int references guest_registrations(registration_id) on delete set null,
-    guard_id int references security_guards(user_id) on delete set null,
-    check_in_time timestamp default current_timestamp,
-    image_snapshot_data BYTEA,
-    access_method access_method_enum not null,
-    is_access_granted boolean default false,
-    note text
+CREATE TABLE access_logs (
+    log_id              SERIAL PRIMARY KEY,
+    lane_id             VARCHAR(30) REFERENCES gates(gate_id) ON DELETE SET NULL,
+    vehicle_id          INT REFERENCES vehicles(vehicle_id) ON DELETE SET NULL,
+    guest_reg_id        INT REFERENCES guest_registrations(registration_id) ON DELETE SET NULL,
+    token_id            INT REFERENCES access_tokens(token_id) ON DELETE SET NULL,
+    guard_id            INT REFERENCES security_guards(user_id) ON DELETE SET NULL,
+    check_in_time       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    detected_text       VARCHAR(100),
+    access_method       access_method_enum NOT NULL,
+    action_reason       VARCHAR(50),         -- UC-07: emergency_vehicle, shipper_delivery, ai_error...
+    note                TEXT,                -- UC-08: biển số đã được Guard sửa
+    image_snapshot_data BYTEA
 );
 
-create table ai_predictions ( -- Bảng thống kê dữ liệu phân tích 
-    prediction_id serial primary key,
-    log_id int references access_logs(log_id) on delete cascade,
-    model_id int references ai_models(model_id),
-    detected_plate_text varchar(20),
-    confidence_score float,
-    processing_time_ms int,
-    is_correct boolean default null,
-    corrected_plate_text varchar(20),
-    bounding_box_json jsonb,
-    cropped_plate_image_data BYTEA
+CREATE TABLE system_audit_logs (
+    audit_id       SERIAL PRIMARY KEY,
+    actor_id       INT REFERENCES users(user_id) ON DELETE SET NULL,
+    action_type    VARCHAR(50),
+    target_table   VARCHAR(50),
+    target_id      INT,
+    action_details JSONB,
+    performed_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-drop table system_audit_logs;
-
-create table system_audit_logs (
-    audit_id serial primary key,
-    actor_id int references managers(user_id), -- Ai lam? (Thuong la Manager)
-    action_type varchar(50), -- VD: 'approve_vehicle', 'delete_guard', 'update_config'
-    target_table varchar(50), -- Tac dong vao bang nao?
-    target_id int, -- ID cua dong bi tac dong
-    action_details text, -- Ghi chu chi tiet (JSON hoac Text)
-    performed_at timestamp default current_timestamp
-);
+select * from  vehicles;

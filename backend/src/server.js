@@ -1,3 +1,5 @@
+const http = require('http'); 
+const { Server } = require('socket.io');
 require('dotenv').config();
 
 const express = require('express');
@@ -5,6 +7,31 @@ const cors = require('cors');
 const { connectDB, closePool } = require('./libs/db');
 
 const app = express();
+// Bọc Express App bằng HTTP Server
+const server = http.createServer(app);
+
+// Khởi tạo trạm phát sóng WebSocket
+const io = new Server(server, {
+  cors: {
+    origin: "*", // Cho phép React gọi tới thoải mái
+    methods: ["GET", "POST"]
+  }
+});
+
+// Lắng nghe tín hiệu từ Camera và bắn lên React
+io.on('connection', (socket) => {
+  console.log('🔗 Có Client kết nối WebSocket:', socket.id);
+
+  // Nhận video từ Python -> Phát lên React
+  socket.on('video_stream', (data) => {
+    socket.broadcast.emit('live_frame', data);
+  });
+
+  // Nhận kết quả quét biển số -> Phát lên React
+  socket.on('scan_result', (data) => {
+    socket.broadcast.emit('scan_result', data);
+  });
+});
 const PORT = process.env.PORT || 5000;
 
 // ========================
@@ -66,7 +93,7 @@ app.use((err, req, res, next) => {
 const startServer = async () => {
     await connectDB();
 
-    const server = app.listen(PORT, () => {
+    server.listen(PORT, () => {
         console.log(`🚀 Server đang chạy tại http://localhost:${PORT}`);
         console.log(`📋 Health check: http://localhost:${PORT}/api/v1/health`);
     });

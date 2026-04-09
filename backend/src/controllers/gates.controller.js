@@ -78,6 +78,8 @@ const checkIn = async (req, res, next) => {
                     confidence_score: result.confidence_score,
                     access_type: result.access_type,
                     owner_info: result.owner_info,
+                    vehicle_info: result.vehicle_info, 
+                    color: result.vehicle_color || (result.vehicle_info && result.vehicle_info.vehicle_color),
                     check_in_time: result.check_in_time,
                 }
             },

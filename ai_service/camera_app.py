@@ -3,20 +3,31 @@ import time
 import base64
 import requests
 import os
+import socketio
 from ai_engine import extract_license_plates
 
 # ==========================================
-# CONFIGURATION
+# CẤU HÌNH HỆ THỐNG
 # ==========================================
-# Node.js backend URL
-NODEJS_BACKEND_URL = "http://localhost:5000/api/v1/gates/check-in"
-# Gate identifier
+NODEJS_API_URL = "http://localhost:5000/api/v1/gates/check-in"
+WEBSOCKET_URL = "http://localhost:5000"
 GATE_ID = 1 
 
-def send_to_backend(plate_text, processing_time_ms, image_path):
-    """
-    Encodes the image to Base64 and sends the payload to Node.js backend.
-    """
+SCAN_INTERVAL = 1.0       
+PLATE_COOLDOWN = 5.0      
+
+# Khởi tạo kết nối WebSocket
+sio = socketio.Client()
+
+def connect_websocket():
+    try:
+        sio.connect(WEBSOCKET_URL)
+        print("[INFO] Đã kết nối WebSocket thành công tới Backend!")
+    except Exception as e:
+        print(f"[WARN] Không thể kết nối WebSocket. Chi tiết: {e}")
+
+def send_to_backend_api(plate_text, processing_time_ms, image_path):
+    """Gửi API Check-in như bình thường"""
     try:
         with open(image_path, "rb") as img_file:
             full_image_base64 = base64.b64encode(img_file.read()).decode('utf-8')
@@ -27,77 +38,99 @@ def send_to_backend(plate_text, processing_time_ms, image_path):
             "processing_time_ms": processing_time_ms,
             "full_image_base64": f"data:image/jpeg;base64,{full_image_base64}"
         }
-        
-        response = requests.post(NODEJS_BACKEND_URL, json=payload)
-        return response.json()
-    except requests.exceptions.ConnectionError:
-        print("[ERROR] Connection to Node.js backend failed.")
-        return None
+        response = requests.post(NODEJS_API_URL, json=payload)
+        return response.json(), f"data:image/jpeg;base64,{full_image_base64}"
     except Exception as e:
-        print(f"[ERROR] Failed to send data: {e}")
-        return None
+        print(f"[ERROR] API gửi thất bại: {e}")
+        return None, None
 
 def main():
-    # Initialize webcam (0 is usually the built-in laptop camera)
-    cap = cv2.VideoCapture(0)
+    connect_websocket()
     
+    cap = cv2.VideoCapture(0)
     if not cap.isOpened():
-        print("[ERROR] Cannot access the camera.")
+        print("[ERROR] Không tìm thấy Camera.")
         return
 
-    print("[INFO] System Ready.")
-    print("[INFO] Press 'C' to capture and process a frame.")
-    print("[INFO] Press 'Q' to quit the application.")
+    print("[INFO] HỆ THỐNG SMART TOLL GATE ĐÃ KHỞI ĐỘNG (LIVE STREAM MODE)")
+    print("[INFO] Giơ biển số vào để quét. Bấm 'Q' để thoát.")
+
+    last_scan_time = 0
+    last_detected_plate = ""
+    cooldown_end_time = 0
 
     while True:
         ret, frame = cap.read()
         if not ret:
-            print("[ERROR] Failed to grab frame.")
             break
-
-        # Display the live camera feed
-        cv2.imshow("Smart Toll Gate - Live Feed", frame)
-
-        # Wait for key press (1ms delay)
-        key = cv2.waitKey(1) & 0xFF
-
-        # If 'C' is pressed, trigger the AI capture process
-        if key == ord('c') or key == ord('C'):
-            print("\n[INFO] Capture triggered. Processing...")
-            start_time = time.time()
             
-            # Save the current frame temporarily
-            temp_path = f"temp_frame_{int(time.time())}.jpg"
+        current_time = time.time()
+
+        # ---------------------------------------------------------
+        # 1. LIVE STREAM LÊN REACT UI MƯỢT MÀ (NÉN ẢNH ĐỂ KHÔNG LAG)
+        # ---------------------------------------------------------
+        if sio.connected:
+            # Thu nhỏ ảnh còn 640x480 và nén chất lượng JPEG xuống 50% để truyền cho nhanh
+            stream_frame = cv2.resize(frame, (640, 480))
+            _, buffer = cv2.imencode('.jpg', stream_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
+            frame_base64 = base64.b64encode(buffer).decode('utf-8')
+            # Bắn ảnh lên WebSocket
+            sio.emit('video_stream', {'image': f"data:image/jpeg;base64,{frame_base64}"})
+
+        # ---------------------------------------------------------
+        # 2. LOGIC AI TỰ ĐỘNG QUÉT BIỂN SỐ
+        # ---------------------------------------------------------
+        cv2.putText(frame, "LIVE STREAM: ON", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        if current_time < cooldown_end_time:
+            time_left = round(cooldown_end_time - current_time, 1)
+            cv2.putText(frame, f"Wait: {time_left}s", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+
+        cv2.imshow("Smart Toll Gate - AI Engine", frame)
+
+        if current_time - last_scan_time >= SCAN_INTERVAL:
+            last_scan_time = current_time
+            
+            temp_path = "temp_frame_auto.jpg"
             cv2.imwrite(temp_path, frame)
             
-            # Run AI extraction
+            start_ai_time = time.time()
             ai_result = extract_license_plates(temp_path, debug=False)
-            processing_time_ms = int((time.time() - start_time) * 1000)
+            processing_time_ms = int((time.time() - start_ai_time) * 1000)
             
-            # Process result
             if ai_result.get("status") == "success" and ai_result.get("plates"):
                 plate_text = ai_result["plates"][0]
-                print(f"[INFO] Detected Plate: {plate_text} ({processing_time_ms}ms)")
                 
-                # Send to Backend
-                backend_response = send_to_backend(plate_text, processing_time_ms, temp_path)
-                if backend_response:
-                    print(f"[INFO] Backend Response: {backend_response}")
-            else:
-                print("[WARN] No license plate detected in this frame.")
+                if plate_text == last_detected_plate and current_time < cooldown_end_time:
+                    pass 
+                else:
+                    print(f"\n[INFO] AI chộp được: {plate_text} ({processing_time_ms}ms)")
+                    last_detected_plate = plate_text
+                    cooldown_end_time = current_time + PLATE_COOLDOWN
+                    
+                    # Gọi API Backend check quyền
+                    api_resp, img_base64 = send_to_backend_api(plate_text, processing_time_ms, temp_path)
+                    
+                    if api_resp and sio.connected:
+                        print(f"[INFO] Backend trả về: {api_resp.get('data', {}).get('action')}")
+                        
+                        # Phân tích kết quả API và bắn tín hiệu sang React UI
+                        status = 'success' if api_resp.get('data', {}).get('action') == 'OPEN' else 'fail'
+                        
+                        sio.emit('scan_result', {
+                            'status': status,
+                            'plate': plate_text,
+                            'captured_image': img_base64
+                        })
             
-            # Clean up temp file
             if os.path.exists(temp_path):
                 os.remove(temp_path)
-                
-        # If 'Q' is pressed, exit the loop
-        elif key == ord('q') or key == ord('Q'):
-            print("[INFO] Shutting down...")
+
+        if cv2.waitKey(1) & 0xFF in [ord('q'), ord('Q')]:
             break
 
-    # Release hardware resources
     cap.release()
     cv2.destroyAllWindows()
+    sio.disconnect()
 
 if __name__ == "__main__":
     main()

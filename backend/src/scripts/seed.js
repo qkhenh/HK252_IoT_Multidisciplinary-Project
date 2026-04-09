@@ -150,10 +150,11 @@ const seedData = async () => {
             await db.query(`
                 INSERT INTO vehicles (owner_id, type_id, license_plate, vehicle_color, is_active) VALUES
                 ($1, 1, '51F-123.45', 'Trắng', true),
-                ($1, 2, '59A1-12345', 'Đen', true)
+                ($1, 2, '59A1-12345', 'Đen', true),
+                ($1, 1, '12B116888', 'Đỏ', true) 
                 ON CONFLICT (license_plate) DO NOTHING
             `, [citizenResult.rows[0].user_id]);
-            console.log('   ✅ Đã tạo 2 vehicles cho citizen_hoa\n');
+            console.log('   ✅ Đã tạo 3 vehicles cho citizen_hoa\n');
         }
         
         console.log('🎉 Seed dữ liệu hoàn tất!\n');
