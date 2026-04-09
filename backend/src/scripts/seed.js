@@ -1,6 +1,9 @@
 /**
  * Script seed dữ liệu mẫu cho testing
  * Chạy: node src/scripts/seed.js
+ *
+ * Schema v2: lanes thay gates, vehicle_type_enum nhúng trực tiếp,
+ *            token_data thay otp_code, bỏ vehicle_types & ai_models
  */
 
 require('dotenv').config();
@@ -44,45 +47,31 @@ const seedData = async () => {
         `);
         console.log(`   ✅ Đã tạo ${housesResult.rowCount} houses\n`);
         
-        // 3. Tạo Gates
+        // 3. Tạo Gates (không còn cột direction — direction nằm ở lanes)
         console.log('🚧 Tạo gates...');
         const gatesResult = await db.query(`
-            INSERT INTO gates (zone_id, gate_name, direction, is_active) VALUES
-            (1, 'Cổng Chính A - Vào', 'inbound', true),
-            (1, 'Cổng Chính A - Ra', 'outbound', true),
-            (2, 'Cổng Khu B - Vào', 'inbound', true),
-            (2, 'Cổng Khu B - Ra', 'outbound', true)
+            INSERT INTO gates (zone_id, gate_name, is_active) VALUES
+            (1, 'Cổng Chính Khu A', true),
+            (2, 'Cổng Khu B',       true)
             ON CONFLICT DO NOTHING
             RETURNING gate_id, gate_name
         `);
         console.log(`   ✅ Đã tạo ${gatesResult.rowCount} gates\n`);
         
-        // 4. Tạo Vehicle Types
-        console.log('🚗 Tạo vehicle types...');
-        const vehicleTypesResult = await db.query(`
-            INSERT INTO vehicle_types (type_name, description) VALUES
-            ('car', 'Ô tô con'),
-            ('motorbike', 'Xe máy'),
-            ('bicycle', 'Xe đạp'),
-            ('truck', 'Xe tải - Không cho phép vào'),
-            ('emergency', 'Xe cứu thương/cứu hỏa')
-            ON CONFLICT DO NOTHING
-            RETURNING type_id, type_name
+        // 4. Tạo Lanes (thay thế cho direction trong gates cũ)
+        console.log('🛣️  Tạo lanes...');
+        const lanesResult = await db.query(`
+            INSERT INTO lanes (lane_id, gate_id, lane_name, direction) VALUES
+            ('MAIN-IN',  1, 'Cổng Chính A - Làn Vào', 'inbound'),
+            ('MAIN-OUT', 1, 'Cổng Chính A - Làn Ra',  'outbound'),
+            ('B-IN',     2, 'Cổng Khu B - Làn Vào',   'inbound'),
+            ('B-OUT',    2, 'Cổng Khu B - Làn Ra',     'outbound')
+            ON CONFLICT (lane_id) DO NOTHING
+            RETURNING lane_id, lane_name
         `);
-        console.log(`   ✅ Đã tạo ${vehicleTypesResult.rowCount} vehicle types\n`);
+        console.log(`   ✅ Đã tạo ${lanesResult.rowCount} lanes\n`);
         
-        // 5. Tạo AI Models
-        console.log('🤖 Tạo AI models...');
-        const aiModelsResult = await db.query(`
-            INSERT INTO ai_models (model_name, version, accuracy_rate, is_active) VALUES
-            ('YOLOv8-PlateDetect', '1.0.0', 0.95, true),
-            ('OCR-VietnamesePlate', '2.1.0', 0.92, true)
-            ON CONFLICT DO NOTHING
-            RETURNING model_id, model_name
-        `);
-        console.log(`   ✅ Đã tạo ${aiModelsResult.rowCount} AI models\n`);
-        
-        // 6. Tạo Users
+        // 5. Tạo Users
         console.log('👤 Tạo users...');
         
         // Manager
@@ -108,10 +97,9 @@ const seedData = async () => {
         
         console.log('   ✅ Đã tạo 3 users (manager, guard, citizen)\n');
         
-        // 7. Tạo role-specific records
+        // 6. Tạo role-specific records
         console.log('🔗 Tạo role-specific records...');
         
-        // Lấy user IDs
         const usersResult = await db.query(`SELECT user_id, username, role FROM users`);
         
         for (const user of usersResult.rows) {
@@ -122,9 +110,10 @@ const seedData = async () => {
                     ON CONFLICT (user_id) DO NOTHING
                 `, [user.user_id]);
             } else if (user.role === 'guard') {
+                // assigned_lane_id là VARCHAR, trỏ đến lanes.lane_id
                 await db.query(`
-                    INSERT INTO security_guards (user_id, assigned_gate_id, employee_code, shift_start, shift_end) VALUES
-                    ($1, 1, 'GD001', '06:00:00', '14:00:00')
+                    INSERT INTO security_guards (user_id, assigned_lane_id, employee_code, shift_start, shift_end) VALUES
+                    ($1, 'MAIN-IN', 'GD001', '06:00:00', '14:00:00')
                     ON CONFLICT (user_id) DO NOTHING
                 `, [user.user_id]);
             } else if (user.role === 'citizen') {
@@ -138,7 +127,10 @@ const seedData = async () => {
         
         console.log('   ✅ Đã liên kết users với role tables\n');
         
-        // 8. Tạo Vehicles cho citizen
+        // 7. Tạo Vehicles cho citizen
+        // vehicle_type là enum nhúng trực tiếp (không còn type_id FK)
+        // owner_user_id trỏ vào users (không phải citizens)
+        // is_active = true (bỏ qua pending approval cho seed data)
         console.log('🚙 Tạo vehicles cho citizen...');
         const citizenResult = await db.query(`
             SELECT c.user_id FROM citizens c
@@ -148,20 +140,37 @@ const seedData = async () => {
         
         if (citizenResult.rows.length > 0) {
             await db.query(`
+<<<<<<< HEAD
                 INSERT INTO vehicles (owner_id, type_id, license_plate, vehicle_color, is_active) VALUES
                 ($1, 1, '51F-123.45', 'Trắng', true),
                 ($1, 2, '59A1-12345', 'Đen', true),
                 ($1, 1, '12B116888', 'Đỏ', true) 
+=======
+                INSERT INTO vehicles (owner_user_id, vehicle_type, license_plate, vehicle_color, is_active) VALUES
+                ($1, 'car',       '51F-123.45', 'Trắng', true),
+                ($1, 'motorbike', '59A1-12345', 'Đen',   true)
+>>>>>>> 9780a95df93ba2a269e38fe4e6073364efa3906e
                 ON CONFLICT (license_plate) DO NOTHING
             `, [citizenResult.rows[0].user_id]);
             console.log('   ✅ Đã tạo 3 vehicles cho citizen_hoa\n');
         }
         
+        // 8. Tạo OTP mẫu cho citizen (token_data thay otp_code)
+        console.log('🔑 Tạo OTP mẫu...');
+        if (citizenResult.rows.length > 0) {
+            await db.query(`
+                INSERT INTO access_tokens (issued_by, token_data, valid_from, valid_until, is_used) VALUES
+                ($1, '123456', NOW(), NOW() + INTERVAL '15 minutes', false)
+                ON CONFLICT (token_data) DO NOTHING
+            `, [citizenResult.rows[0].user_id]);
+            console.log('   ✅ Đã tạo 1 OTP mẫu (token_data: 123456)\n');
+        }
+        
         console.log('🎉 Seed dữ liệu hoàn tất!\n');
         console.log('📋 Test accounts:');
-        console.log('   - manager_thinh / password123 (Manager)');
-        console.log('   - guard_nam / password123 (Guard)');
-        console.log('   - citizen_hoa / password123 (Citizen)\n');
+        console.log('   - manager_thinh / password123 (Manager - Khu A)');
+        console.log('   - guard_nam     / password123 (Guard   - Làn MAIN-IN)');
+        console.log('   - citizen_hoa   / password123 (Citizen - Nhà A101)\n');
         
     } catch (error) {
         console.error('❌ Lỗi khi seed:', error);
@@ -171,3 +180,4 @@ const seedData = async () => {
 };
 
 seedData();
+

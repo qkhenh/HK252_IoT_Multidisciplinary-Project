@@ -1,41 +1,38 @@
 const db = require('../libs/db');
 
 /**
- * Tìm và validate OTP
- * @param {string} otpCode - Mã OTP 6 số
- * @returns {Object|null} Token info nếu hợp lệ, null nếu không
+ * Tìm và validate token (OTP hoặc QR UUID)
+ * @param {string} tokenData - Mã 6 số OTP hoặc UUID QR
  */
-const findValidOTP = async (otpCode) => {
-    const query = `
-        SELECT 
-            at.token_id,
-            at.otp_code,
-            at.issued_by,
-            at.valid_from,
-            at.valid_until,
-            at.is_used,
-            u.full_name as issued_by_name,
-            c.phone_number as issued_by_phone,
-            h.house_number,
-            h.block_number,
-            CASE WHEN at.valid_until < NOW() THEN true ELSE false END as is_expired
-        FROM access_tokens at
-        JOIN citizens c ON at.issued_by = c.user_id
-        JOIN users u ON c.user_id = u.user_id
-        LEFT JOIN houses h ON c.house_id = h.house_id
-        WHERE at.otp_code = $1
-        ORDER BY at.valid_from DESC
-        LIMIT 1
-    `;
-    
-    const result = await db.query(query, [otpCode]);
-    
-    if (result.rows.length === 0) {
-        return null;
-    }
-    
-    return result.rows[0];
+const findValidToken = async (tokenData) => {
+    const result = await db.query(
+        `SELECT
+             at.token_id,
+             at.token_data,
+             at.issued_by,
+             at.valid_from,
+             at.valid_until,
+             at.is_used,
+             u.full_name as issued_by_name,
+             c.phone_number as issued_by_phone,
+             h.house_number,
+             h.block_number,
+             CASE WHEN at.valid_until < NOW() THEN true ELSE false END as is_expired
+         FROM access_tokens at
+         JOIN citizens c ON at.issued_by = c.user_id
+         JOIN users u ON c.user_id = u.user_id
+         LEFT JOIN houses h ON c.house_id = h.house_id
+         WHERE at.token_data = $1
+         ORDER BY at.valid_from DESC
+         LIMIT 1`,
+        [tokenData]
+    );
+
+    return result.rows.length > 0 ? result.rows[0] : null;
 };
+
+// Alias để tương thích ngược
+const findValidOTP = findValidToken;
 
 /**
  * Đánh dấu OTP đã sử dụng
@@ -54,50 +51,40 @@ const markOTPAsUsed = async (tokenId) => {
 };
 
 /**
- * Ghi log access khi verify OTP thành công
+ * Ghi log access khi verify OTP thủ công thành công
  * @param {Object} params
  */
-const logOTPAccess = async ({ gateId, guardId, guestRegistrationId, note }) => {
-    const query = `
-        INSERT INTO access_logs (
-            gate_id, 
-            guard_id, 
-            guest_registration_id,
-            access_method, 
-            is_access_granted, 
-            note
-        )
-        VALUES ($1, $2, $3, 'manual_otp', true, $4)
-        RETURNING log_id, check_in_time
-    `;
-    
-    const result = await db.query(query, [gateId, guardId, guestRegistrationId, note]);
+const logOTPAccess = async ({ laneId, guardId, tokenId, note }) => {
+    const result = await db.query(
+        `INSERT INTO access_logs (
+             lane_id, guard_id, token_id, access_method, is_access_granted, note
+         )
+         VALUES ($1, $2, $3, 'ai_camera_otp', true, $4)
+         RETURNING log_id, check_in_time`,
+        [laneId, guardId, tokenId || null, note || null]
+    );
     return result.rows[0];
 };
 
 /**
- * Kiểm tra guard có tồn tại và được assign gate này không
+ * Kiểm tra guard có tồn tại không và lấy assigned_lane_id
  */
-const checkGuardAssignment = async (guardId, gateId) => {
-    const query = `
-        SELECT sg.user_id, sg.assigned_gate_id, u.full_name
-        FROM security_guards sg
-        JOIN users u ON sg.user_id = u.user_id
-        WHERE sg.user_id = $1
-    `;
-    
-    const result = await db.query(query, [guardId]);
-    
-    if (result.rows.length === 0) {
-        return { exists: false };
-    }
-    
+const checkGuardAssignment = async (guardId) => {
+    const result = await db.query(
+        `SELECT sg.user_id, sg.assigned_lane_id, u.full_name
+         FROM security_guards sg
+         JOIN users u ON sg.user_id = u.user_id
+         WHERE sg.user_id = $1`,
+        [guardId]
+    );
+
+    if (result.rows.length === 0) return { exists: false };
+
     const guard = result.rows[0];
     return {
         exists: true,
         full_name: guard.full_name,
-        assigned_gate_id: guard.assigned_gate_id,
-        is_assigned_to_gate: guard.assigned_gate_id === gateId,
+        assigned_lane_id: guard.assigned_lane_id,
     };
 };
 
@@ -122,104 +109,150 @@ const COMMON_REASONS = [
  * Ghi log thao tác thủ công của bảo vệ
  * @param {Object} params
  */
-const logManualAction = async ({ 
-    gateId, 
-    guardId, 
-    actionType, 
-    note,
-    imageSnapshotBuffer 
-}) => {
+const logManualAction = async ({ laneId, guardId, actionType, actionReason, note, imageSnapshotBuffer }) => {
     const isAccessGranted = actionType === 'open_barrier';
-    
-    const query = `
-        INSERT INTO access_logs (
-            gate_id, 
-            guard_id, 
-            access_method,
-            is_access_granted, 
-            note,
-            image_snapshot_data
-        )
-        VALUES ($1, $2, 'manual_guard', $3, $4, $5)
-        RETURNING log_id, check_in_time, is_access_granted
-    `;
-    
-    const result = await db.query(query, [
-        gateId, 
-        guardId, 
-        isAccessGranted, 
-        note,
-        imageSnapshotBuffer || null
-    ]);
-    
+
+    const result = await db.query(
+        `INSERT INTO access_logs (
+             lane_id, guard_id, access_method, is_access_granted, action_reason, note, image_snapshot_data
+         )
+         VALUES ($1, $2, 'manual_guard', $3, $4, $5, $6)
+         RETURNING log_id, check_in_time, is_access_granted`,
+        [laneId, guardId, isAccessGranted, actionReason || null, note || null, imageSnapshotBuffer || null]
+    );
+
     return result.rows[0];
 };
 
 /**
- * Lấy thông tin cổng
- * @param {number} gateId
+ * Lấy thông tin lane + gate
+ * @param {string} laneId
  */
-const getGateInfo = async (gateId) => {
-    const query = `
-        SELECT gate_id, zone_id, gate_name, direction, is_active
-        FROM gates WHERE gate_id = $1
-    `;
-    const result = await db.query(query, [gateId]);
+const getLaneInfo = async (laneId) => {
+    const result = await db.query(
+        `SELECT l.lane_id, l.lane_name, l.direction, g.gate_id, g.gate_name, g.is_active
+         FROM lanes l
+         JOIN gates g ON l.gate_id = g.gate_id
+         WHERE l.lane_id = $1`,
+        [laneId]
+    );
     return result.rows.length > 0 ? result.rows[0] : null;
 };
 
 /**
  * Lấy lịch sử access logs cho màn hình bảo vệ (real-time monitoring)
- * @param {number} gateId
+ * @param {string} laneId
  * @param {number} limit
  */
-const getRecentAccessLogs = async (gateId, limit = 20) => {
-    const query = `
-        SELECT 
-            al.log_id,
-            al.check_in_time,
-            al.access_method,
-            al.is_access_granted,
-            al.note,
-            g.gate_name,
-            v.license_plate,
-            ap.detected_plate_text,
-            ap.confidence_score,
-            u.full_name as guard_name
-        FROM access_logs al
-        LEFT JOIN gates g ON al.gate_id = g.gate_id
-        LEFT JOIN vehicles v ON al.vehicle_id = v.vehicle_id
-        LEFT JOIN ai_predictions ap ON al.log_id = ap.log_id
-        LEFT JOIN users u ON al.guard_id = u.user_id
-        WHERE al.gate_id = $1
-        ORDER BY al.check_in_time DESC
-        LIMIT $2
-    `;
-    
-    const result = await db.query(query, [gateId, limit]);
+const getRecentAccessLogs = async (laneId, limit = 20) => {
+    const result = await db.query(
+        `SELECT
+             al.log_id,
+             al.check_in_time,
+             al.access_method,
+             al.is_access_granted,
+             al.detected_text,
+             al.action_reason,
+             al.note,
+             l.lane_name,
+             g.gate_name,
+             v.license_plate,
+             u.full_name as guard_name
+         FROM access_logs al
+         LEFT JOIN lanes l ON al.lane_id = l.lane_id
+         LEFT JOIN gates g ON l.gate_id = g.gate_id
+         LEFT JOIN vehicles v ON al.vehicle_id = v.vehicle_id
+         LEFT JOIN users u ON al.guard_id = u.user_id
+         WHERE al.lane_id = $1
+         ORDER BY al.check_in_time DESC
+         LIMIT $2`,
+        [laneId, limit]
+    );
     return result.rows;
 };
 
 /**
  * Lấy thống kê nhanh cho màn hình bảo vệ
- * @param {number} gateId
+ * @param {string} laneId
  */
-const getGateStats = async (gateId) => {
-    const query = `
-        SELECT 
-            COUNT(*) FILTER (WHERE check_in_time >= NOW() - INTERVAL '1 hour') as last_hour,
-            COUNT(*) FILTER (WHERE check_in_time >= NOW() - INTERVAL '24 hours') as last_24h,
-            COUNT(*) FILTER (WHERE is_access_granted = true AND check_in_time >= NOW() - INTERVAL '24 hours') as granted_24h,
-            COUNT(*) FILTER (WHERE is_access_granted = false AND check_in_time >= NOW() - INTERVAL '24 hours') as denied_24h
-        FROM access_logs
-        WHERE gate_id = $1
-    `;
-    
-    const result = await db.query(query, [gateId]);
+const getGateStats = async (laneId) => {
+    const result = await db.query(
+        `SELECT
+             COUNT(*) FILTER (WHERE check_in_time >= NOW() - INTERVAL '1 hour') as last_hour,
+             COUNT(*) FILTER (WHERE check_in_time >= NOW() - INTERVAL '24 hours') as last_24h,
+             COUNT(*) FILTER (WHERE is_access_granted = true AND check_in_time >= NOW() - INTERVAL '24 hours') as granted_24h,
+             COUNT(*) FILTER (WHERE is_access_granted = false AND check_in_time >= NOW() - INTERVAL '24 hours') as denied_24h
+         FROM access_logs
+         WHERE lane_id = $1`,
+        [laneId]
+    );
     return result.rows[0];
 };
 
+// ========================
+// GUEST REGISTRATION BY GUARD (UC-02)
+// ========================
+
+/**
+ * Guard đăng ký khách thay cư dân
+ */
+const createGuestRegistration = async ({ hostCitizenId, guestName, guestLicensePlate, vehicleType, visitStartTime, visitEndTime }) => {
+    const result = await db.query(
+        `INSERT INTO guest_registrations (
+             host_user_id, guest_name, guest_license_plate, vehicle_type,
+             visit_start_time, visit_end_time, status
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, 'approved')
+         RETURNING registration_id, guest_name, guest_license_plate, visit_start_time, visit_end_time, status`,
+        [hostCitizenId, guestName, guestLicensePlate, vehicleType || 'car', visitStartTime, visitEndTime]
+    );
+    return result.rows[0];
+};
+
+/**
+ * Kiểm tra citizen tồn tại
+ */
+const checkCitizenExists = async (citizenId) => {
+    const result = await db.query(
+        `SELECT user_id FROM citizens WHERE user_id = $1`,
+        [citizenId]
+    );
+    return result.rows.length > 0;
+};
+
+// ========================
+// AI CORRECTION (UC-08)
+// ========================
+
+/**
+ * Guard báo cáo biển số AI đọc sai — cập nhật cột note trong access_logs
+ */
+const addAICorrection = async (logId, guardId, correctedPlateText) => {
+    const result = await db.query(
+        `UPDATE access_logs
+         SET note = $3, guard_id = $2
+         WHERE log_id = $1
+         RETURNING log_id, note`,
+        [logId, guardId, correctedPlateText]
+    );
+    return result.rows.length > 0 ? result.rows[0] : null;
+};
+
+/**
+ * Lấy thông tin log để kiểm tra trước khi sửa
+ */
+const getLogById = async (logId) => {
+    const result = await db.query(
+        `SELECT al.log_id, al.lane_id, al.detected_text, al.note, al.is_access_granted
+         FROM access_logs al
+         WHERE al.log_id = $1`,
+        [logId]
+    );
+    return result.rows.length > 0 ? result.rows[0] : null;
+};
+
 module.exports = {
+    findValidToken,
     findValidOTP,
     markOTPAsUsed,
     logOTPAccess,
@@ -228,8 +261,14 @@ module.exports = {
     VALID_ACTION_TYPES,
     COMMON_REASONS,
     logManualAction,
-    getGateInfo,
+    getLaneInfo,
     // Monitoring
     getRecentAccessLogs,
     getGateStats,
+    // Guest registration
+    createGuestRegistration,
+    checkCitizenExists,
+    // AI correction
+    addAICorrection,
+    getLogById,
 };

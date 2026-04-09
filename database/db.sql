@@ -1,4 +1,28 @@
+<<<<<<< HEAD
 
+=======
+-- ==========================================
+-- Smart Toll Gate — Database Schema
+-- HK252 IoT Multidisciplinary Project
+-- Phiên bản: 2.0 (Đồng bộ theo report.md)
+--
+-- Thay đổi chính so với v1:
+--   - Thêm bảng lanes (tách direction ra khỏi gates)
+--   - Xóa hoàn toàn: vehicle_types, ai_models, ai_predictions
+--   - vehicles: nhúng vehicle_type_enum trực tiếp, thêm is_inside (anti-passback), last_log_time
+--   - guest_registrations: nhúng vehicle_type_enum trực tiếp
+--   - access_tokens: đổi otp_code/qr_data → token_data (dùng chung OTP + QR UUID)
+--   - security_guards: assigned_gate_id → assigned_lane_id (VARCHAR FK → lanes)
+--   - access_logs: gate_id → lane_id, thêm token_id, detected_text, action_reason
+--   - system_audit_logs: actor_id → tham chiếu users (không chỉ managers), action_details → jsonb
+--   - Enum direction_enum thay cho gate_direction_enum
+--   - Enum access_method_enum giá trị mới: ai_plate_recognition, ai_camera_otp, ai_camera_qr, manual_guard
+-- ==========================================
+
+-- ==========================================
+-- 1. DROP CÁC BẢNG CŨ (THỨ TỰ TỪ CON ĐẾN CHA)
+-- ==========================================
+>>>>>>> 9780a95df93ba2a269e38fe4e6073364efa3906e
 DROP TABLE IF EXISTS system_audit_logs CASCADE;
 DROP TABLE IF EXISTS ai_predictions   CASCADE;
 DROP TABLE IF EXISTS access_logs      CASCADE;
@@ -24,12 +48,34 @@ DROP TYPE IF EXISTS direction_enum      CASCADE;
 DROP TYPE IF EXISTS gate_direction_enum CASCADE;  -- tên cũ, xóa nếu còn tồn tại
 DROP TYPE IF EXISTS access_method_enum  CASCADE;
 
+<<<<<<< HEAD
 CREATE TYPE user_role_enum AS ENUM ('citizen', 'guard', 'manager');
 
 CREATE TYPE vehicle_type_enum AS ENUM ('car', 'motorbike', 'bicycle', 'truck', 'emergency');
 
 CREATE TYPE direction_enum AS ENUM ('inbound', 'outbound');
 
+=======
+-- ==========================================
+-- 2. KHỞI TẠO ENUM
+-- ==========================================
+
+-- Phân quyền người dùng (disjoint total — mỗi user chỉ một role)
+CREATE TYPE user_role_enum AS ENUM ('citizen', 'guard', 'manager');
+
+-- Loại phương tiện — nhúng trực tiếp vào vehicles & guest_registrations
+-- (không còn bảng vehicle_types riêng biệt)
+CREATE TYPE vehicle_type_enum AS ENUM ('car', 'motorbike', 'bicycle', 'truck', 'emergency');
+
+-- Hướng di chuyển của làn xe
+CREATE TYPE direction_enum AS ENUM ('inbound', 'outbound');
+
+-- Phương thức qua cổng:
+--   ai_plate_recognition  — AI đọc biển số xe (Scenario 1)
+--   ai_camera_otp         — Camera OCR đọc OTP 6 số từ màn hình điện thoại (Scenario 3)
+--   ai_camera_qr          — Camera OCR decode mã QR UUID từ màn hình điện thoại (Scenario 4)
+--   manual_guard          — Guard / Manager mở thủ công (UC-07)
+>>>>>>> 9780a95df93ba2a269e38fe4e6073364efa3906e
 CREATE TYPE access_method_enum AS ENUM (
     'ai_plate_recognition',
     'ai_camera_otp',
@@ -37,6 +83,14 @@ CREATE TYPE access_method_enum AS ENUM (
     'manual_guard'
 );
 
+<<<<<<< HEAD
+=======
+-- ==========================================
+-- 3. CỤM HẠ TẦNG VẬT LÝ
+-- ==========================================
+
+-- Khu vực quản lý (Zone)
+>>>>>>> 9780a95df93ba2a269e38fe4e6073364efa3906e
 CREATE TABLE zones (
     zone_id     SERIAL PRIMARY KEY,
     zone_name   VARCHAR(50) NOT NULL,
@@ -44,6 +98,10 @@ CREATE TABLE zones (
     created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+<<<<<<< HEAD
+=======
+-- Căn hộ / nhà trong khu (thuộc một Zone)
+>>>>>>> 9780a95df93ba2a269e38fe4e6073364efa3906e
 CREATE TABLE houses (
     house_id     SERIAL PRIMARY KEY,
     zone_id      INT REFERENCES zones(zone_id) ON DELETE SET NULL,
@@ -53,6 +111,11 @@ CREATE TABLE houses (
     created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+<<<<<<< HEAD
+=======
+-- Cổng vật lý (một Zone có nhiều Gate)
+-- NOTE: direction đã được chuyển xuống bảng lanes
+>>>>>>> 9780a95df93ba2a269e38fe4e6073364efa3906e
 CREATE TABLE gates (
     gate_id   SERIAL PRIMARY KEY,
     zone_id   INT REFERENCES zones(zone_id) ON DELETE CASCADE,
@@ -60,6 +123,11 @@ CREATE TABLE gates (
     is_active BOOLEAN DEFAULT TRUE
 );
 
+<<<<<<< HEAD
+=======
+-- Làn xe tại cổng (một Gate có nhiều Lane — thường gồm 1 làn vào + 1 làn ra)
+-- lane_id dùng chuỗi mô tả VD: 'MAIN-IN', 'MAIN-OUT', 'B-IN', 'B-OUT'
+>>>>>>> 9780a95df93ba2a269e38fe4e6073364efa3906e
 CREATE TABLE lanes (
     lane_id   VARCHAR(30) PRIMARY KEY,
     gate_id   INT REFERENCES gates(gate_id) ON DELETE CASCADE,
@@ -79,6 +147,14 @@ CREATE TABLE iot_devices (
     last_ping   TIMESTAMP
 );
 
+<<<<<<< HEAD
+=======
+-- ==========================================
+-- 4. CỤM NGƯỜI DÙNG & PHÂN QUYỀN (ISA)
+-- ==========================================
+
+-- Bảng gốc tất cả user (mỗi user có duy nhất 1 role)
+>>>>>>> 9780a95df93ba2a269e38fe4e6073364efa3906e
 CREATE TABLE users (
     user_id       SERIAL PRIMARY KEY,
     username      VARCHAR(50) UNIQUE NOT NULL,
@@ -93,7 +169,11 @@ CREATE TABLE users (
 -- Thông tin đặc thù của Cư dân
 CREATE TABLE citizens (
     user_id              INT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+<<<<<<< HEAD
 house_id             INT REFERENCES houses(house_id) ON DELETE SET NULL,
+=======
+    house_id             INT REFERENCES houses(house_id) ON DELETE SET NULL,
+>>>>>>> 9780a95df93ba2a269e38fe4e6073364efa3906e
     phone_number         VARCHAR(15) UNIQUE,
     identity_card_number VARCHAR(20),
     is_house_owner       BOOLEAN DEFAULT FALSE
@@ -116,6 +196,17 @@ CREATE TABLE managers (
     department_name VARCHAR(50)
 );
 
+<<<<<<< HEAD
+=======
+-- ==========================================
+-- 5. CỤM NGHIỆP VỤ (WHITELIST & TOKEN)
+-- ==========================================
+
+-- Whitelist vĩnh viễn: xe của cư dân
+--   is_inside: cờ anti-passback — true = xe đang ở trong khu
+--   last_log_time: thời điểm lần cuối xe qua cổng
+--   is_active: false = chờ Manager duyệt (UC-09)
+>>>>>>> 9780a95df93ba2a269e38fe4e6073364efa3906e
 CREATE TABLE vehicles (
     vehicle_id    SERIAL PRIMARY KEY,
     owner_user_id INT REFERENCES users(user_id) ON DELETE CASCADE,
@@ -128,6 +219,12 @@ CREATE TABLE vehicles (
     registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+<<<<<<< HEAD
+=======
+-- Whitelist tạm thời: khách có hẹn trước (UC-02)
+--   Có thể được tạo bởi Citizen, Guard, hoặc Manager (host_user_id → users)
+--   status: luôn 'approved' vì hệ thống check time window khi AI check-in
+>>>>>>> 9780a95df93ba2a269e38fe4e6073364efa3906e
 CREATE TABLE guest_registrations (
     registration_id  SERIAL PRIMARY KEY,
     host_user_id     INT REFERENCES users(user_id) ON DELETE CASCADE,
@@ -153,6 +250,23 @@ CREATE TABLE access_tokens (
     used_at     TIMESTAMP
 );
 
+<<<<<<< HEAD
+=======
+-- ==========================================
+-- 6. CỤM LOGGING & AUDIT
+-- ==========================================
+
+-- Bảng ghi nhận tất cả lượt ra vào cổng
+--   lane_id           : làn xe (thay gate_id)
+--   vehicle_id        : xe cư dân (nếu là Scenario 1)
+--   guest_reg_id      : đăng ký khách (nếu là Scenario 1 guest / Scenario 3)
+--   token_id          : OTP / QR token đã dùng (nếu là Scenario 3 / 4)
+--   guard_id          : Guard/Manager mở thủ công (nếu là UC-07)
+--   detected_text     : chuỗi OCR thô AI trả về (biển số / OTP 6 số / UUID QR)
+--   action_reason     : lý do mở thủ công — bắt buộc khi access_method = 'manual_guard' (UC-07)
+--   note              : ghi chú tự do, dùng lưu biển số đã sửa (UC-08)
+--   image_snapshot_data: ảnh chụp tại thời điểm ra vào (BYTEA)
+>>>>>>> 9780a95df93ba2a269e38fe4e6073364efa3906e
 CREATE TABLE access_logs (
     log_id              SERIAL PRIMARY KEY,
     lane_id             VARCHAR(30) REFERENCES gates(gate_id) ON DELETE SET NULL,
@@ -168,6 +282,13 @@ CREATE TABLE access_logs (
     image_snapshot_data BYTEA
 );
 
+<<<<<<< HEAD
+=======
+-- Bảng audit trail: lịch sử thao tác hệ thống
+--   actor_id     : bất kỳ user nào (Guard, Manager, Citizen) — không chỉ Manager
+--   action_type  : VD 'APPROVE_VEHICLE', 'REJECT_VEHICLE', 'AI_CORRECTION', 'MANUAL_OPEN'
+--   action_details: JSON chứa metadata chi tiết của hành động
+>>>>>>> 9780a95df93ba2a269e38fe4e6073364efa3906e
 CREATE TABLE system_audit_logs (
     audit_id       SERIAL PRIMARY KEY,
     actor_id       INT REFERENCES users(user_id) ON DELETE SET NULL,
@@ -178,4 +299,7 @@ CREATE TABLE system_audit_logs (
     performed_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+<<<<<<< HEAD
 select * from  vehicles;
+=======
+>>>>>>> 9780a95df93ba2a269e38fe4e6073364efa3906e
