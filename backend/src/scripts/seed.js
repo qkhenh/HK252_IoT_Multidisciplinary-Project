@@ -127,16 +127,9 @@ const seedData = async () => {
         
         if (citizenResult.rows.length > 0) {
             await db.query(`
-<<<<<<< HEAD
-                INSERT INTO vehicles (owner_id, type_id, license_plate, vehicle_color, is_active) VALUES
-                ($1, 1, '51F-123.45', 'Trắng', true),
-                ($1, 2, '59A1-12345', 'Đen', true),
-                ($1, 1, '12B116888', 'Đỏ', true) 
-=======
                 INSERT INTO vehicles (owner_user_id, vehicle_type, license_plate, vehicle_color, is_active) VALUES
                 ($1, 'car',       '51F-123.45', 'Trắng', true),
                 ($1, 'motorbike', '59A1-12345', 'Đen',   true)
->>>>>>> 9780a95df93ba2a269e38fe4e6073364efa3906e
                 ON CONFLICT (license_plate) DO NOTHING
             `, [citizenResult.rows[0].user_id]);
             console.log('   ✅ Đã tạo 3 vehicles cho citizen_hoa\n');

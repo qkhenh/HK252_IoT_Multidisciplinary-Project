@@ -36,20 +36,6 @@ const checkIn = async (req, res, next) => {
                 action: result.action,
                 message: result.message,
                 log_id: result.log_id,
-<<<<<<< HEAD
-                // Thêm thông tin chi tiết (optional, có thể bỏ nếu không cần)
-                details: {
-                    gate_name: gate.gate_name,
-                    direction: gate.direction,
-                    plate_text: result.plate_text,
-                    confidence_score: result.confidence_score,
-                    access_type: result.access_type,
-                    owner_info: result.owner_info,
-                    vehicle_info: result.vehicle_info, 
-                    color: result.vehicle_color || (result.vehicle_info && result.vehicle_info.vehicle_color),
-                    check_in_time: result.check_in_time,
-                }
-=======
                 check_in_time: result.check_in_time,
                 plate_text: result.plate_text,
                 confidence_score: result.confidence_score,
@@ -57,7 +43,6 @@ const checkIn = async (req, res, next) => {
                 owner_info: result.owner_info,
                 lane_name: result.lane_name,
                 gate_name: result.gate_name,
->>>>>>> 9780a95df93ba2a269e38fe4e6073364efa3906e
             },
         });
     } catch (error) {
