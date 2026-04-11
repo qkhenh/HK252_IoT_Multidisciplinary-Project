@@ -17,7 +17,8 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 logging.getLogger('easyocr').setLevel(logging.ERROR)
 
 # Initialize models globally to avoid reloading
-YOLO_MODEL = YOLO('model_training.pt')
+MODEL_PATH = os.path.join(os.path.dirname(__file__), 'model_training.pt')
+YOLO_MODEL = YOLO(MODEL_PATH)
 OCR_READER = easyocr.Reader(['en'], gpu=False, verbose=False)
 
 def preprocess_image_for_ocr(img: np.ndarray) -> np.ndarray:

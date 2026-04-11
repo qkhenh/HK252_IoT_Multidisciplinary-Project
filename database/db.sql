@@ -82,6 +82,16 @@ CREATE TABLE zones (
     created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Căn hộ / nhà trong khu (thuộc một Zone)
+CREATE TABLE houses (
+    house_id     SERIAL PRIMARY KEY,
+    zone_id      INT REFERENCES zones(zone_id) ON DELETE SET NULL,
+    house_number VARCHAR(20) NOT NULL,
+    block_number VARCHAR(20),
+    floor_number INT,
+    created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Cổng vật lý (một Zone có nhiều Gate)
 -- NOTE: direction đã được chuyển xuống bảng lanes
 CREATE TABLE gates (
@@ -131,8 +141,7 @@ CREATE TABLE users (
 -- Thông tin đặc thù của Cư dân
 CREATE TABLE citizens (
     user_id              INT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
-    zone_id              INT REFERENCES zones(zone_id) ON DELETE SET NULL,
-    address              VARCHAR(255),
+    house_id             INT REFERENCES houses(house_id) ON DELETE SET NULL,
     phone_number         VARCHAR(15) UNIQUE,
     identity_card_number VARCHAR(20),
     is_house_owner       BOOLEAN DEFAULT FALSE

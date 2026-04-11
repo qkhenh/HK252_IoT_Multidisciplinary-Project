@@ -27,6 +27,7 @@ bool raOpen = false;
 
 void setup() {
   Serial.begin(9600); 
+  Serial.begin(9600); 
   lcd.init(); lcd.backlight();
   
   sVao.attach(6);
@@ -35,8 +36,10 @@ void setup() {
   
   sVao.write(GATE_DOWN);
   sRa.write(GATE_DOWN);
+  sVao.write(GATE_DOWN);
+  sRa.write(GATE_DOWN);
   
-  lcd.print("CC04 Group 8");
+  lcd.print("BKEzPass Group 8");
   lcd.setCursor(0, 1);
   lcd.print("System Ready");
   delay(2000);
@@ -59,6 +62,11 @@ void loop() {
       updateLCD("WELCOME,", residentName); // Display name from Backend
       beep(1);
     }
+
+    else {
+      updateLCD("UNAUTHORIZED GUEST", ""); // Display name from Backend
+      beep(1);
+    }
   }
 
   // --- 2. SCAN SENSORS ---
@@ -69,6 +77,8 @@ void loop() {
   // If car is at the gate but NOT yet authorized by AI
   if (dInA < threshold && !vaoOpen) {
     updateLCD("ENTRY DETECTED", "Scanning Plate...");
+    Serial.println("CAR_ARRIVED"); // BẮN TÍN HIỆU CHO PYTHON CHỤP ẢNH!
+    delay(1500); // Nghỉ 1.5s để không spam tín hiệu
   }
 
   // If gate is open and car has passed the EXIT sensor (OutA)
