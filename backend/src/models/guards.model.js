@@ -91,7 +91,7 @@ const checkGuardAssignment = async (guardId) => {
 // ========================
 
 // Danh sách action types được phép
-const VALID_ACTION_TYPES = ['open_barrier', 'keep_closed_log_only'];
+const VALID_ACTION_TYPES = ['open_barrier', 'close_barrier', 'log_event'];
 
 // Danh sách lý do thường gặp
 const COMMON_REASONS = [
@@ -173,10 +173,14 @@ const getRecentAccessLogs = async (laneId, limit = 20) => {
 const getGateStats = async (laneId) => {
     const result = await db.query(
         `SELECT
-             COUNT(*) FILTER (WHERE check_in_time >= NOW() - INTERVAL '1 hour') as last_hour,
-             COUNT(*) FILTER (WHERE check_in_time >= NOW() - INTERVAL '24 hours') as last_24h
-         FROM access_logs
-         WHERE lane_id = $1`,
+            COUNT(*) FILTER (WHERE check_in_time >= NOW() - INTERVAL '1 hour') AS last_hour,
+            COUNT(*) FILTER (WHERE check_in_time >= NOW() - INTERVAL '24 hours') AS last_24h,
+            COUNT(*) FILTER (WHERE check_in_time >= NOW() - INTERVAL '24 hours'
+                              AND vehicle_id IS NOT NULL) AS granted_24h,
+            COUNT(*) FILTER (WHERE check_in_time >= NOW() - INTERVAL '24 hours'
+                            AND vehicle_id IS NULL AND guest_reg_id IS NULL AND token_id IS NULL) AS denied_24h
+        FROM access_logs
+        WHERE lane_id = $1`,
         [laneId]
     );
     return result.rows[0];

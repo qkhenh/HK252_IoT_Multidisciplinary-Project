@@ -131,7 +131,7 @@ router.get('/ai/performance', managersController.getAIPerformance);
  * @route   POST /api/v1/managers/manual-action
  * @desc    Manager mở/đóng cổng khẩn cấp
  * @access  Private - Manager only
- * @body    { gate_id, action: 'OPEN'|'CLOSE', action_reason?, note? }
+ * @body    { lane_id, action_type: 'open_barrier'|'close_barrier', action_reason?, note? }
  */
 router.post('/manual-action', managersController.manualAction);
 

@@ -37,6 +37,20 @@ except Exception as e:
 # --- KHỞI TẠO WEBSOCKET ---
 sio = socketio.Client()
 
+@sio.on('manual_command')
+def on_manual_command(data):
+    action = data.get('action')
+    operator = data.get('operator_name', 'Guard')
+    clean_op = strip_accents(operator)
+    
+    if action == 'OPEN' and ser:
+        ser.write(f"ENTRY_GO:{clean_op}\n".encode())
+        print(f"[MANUAL] Open by: {clean_op}")
+        
+    elif action == 'CLOSE' and ser:
+        ser.write(b"FORCE_CLOSE\n")
+        print(f"[MANUAL] Emergency Close by: {clean_op}")
+        
 def connect_websocket():
     try:
         sio.connect(WEBSOCKET_URL)

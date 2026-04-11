@@ -46,7 +46,7 @@ const verifyOTP = async (req, res, next) => {
             laneId: lane_id,
             guardId,
             tokenId: token.token_id,
-            note: `OTP verified by guard. Issued by: ${token.issued_by_name} (${token.house_number || 'N/A'})`,
+            note: `OTP verified by guard. Issued by: ${token.issued_by_name} (${token.address || 'N/A'})`,
         });
 
         res.status(200).json({
@@ -58,8 +58,7 @@ const verifyOTP = async (req, res, next) => {
                 guest_info: {
                     host_name: token.issued_by_name,
                     host_phone: token.issued_by_phone,
-                    house_number: token.house_number,
-                    block_number: token.block_number,
+                    address: token.address,
                 },
             },
         });
@@ -111,11 +110,21 @@ const manualAction = async (req, res, next) => {
             imageSnapshotBuffer: imageBuffer,
         });
 
+        const io = req.app.get('io');
+        if (io && action_type !== 'log_event') 
+        {
+            io.emit('manual_command', {
+                action: action_type === 'open_barrier' ? 'OPEN' : action_type === 'close_barrier' ? 'CLOSE' : 'LOG_ONLY',
+                operator_name: req.user.full_name || 'Guard', 
+                lane_id,
+            });
+        }
+
         res.status(200).json({
             success: true,
-            message: action_type === 'open_barrier' ? 'Đã mở cổng và ghi nhận thao tác thủ công.' : 'Đã ghi nhận sự kiện.',
+            message: action_type === 'open_barrier' ? 'Đã mở cổng và ghi nhận thao tác thủ công.' : action_type === 'close_barrier' ? 'Đã đóng cổng và ghi nhận thao tác thủ công.' : 'Đã ghi nhận sự kiện.',
             data: {
-                action: action_type === 'open_barrier' ? 'OPEN' : 'KEEP_CLOSED',
+                action: action_type === 'open_barrier' ? 'OPEN' : action_type === 'close_barrier' ? 'CLOSE' : 'LOG_ONLY',
                 log_id: logResult.log_id,
                 check_in_time: logResult.check_in_time,
             },

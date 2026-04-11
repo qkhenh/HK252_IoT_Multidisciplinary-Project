@@ -63,6 +63,17 @@ void loop() {
       beep(1);
     }
 
+    else if (input == "FORCE_CLOSE") 
+    {
+      sVao.write(GATE_DOWN);
+      sRa.write(GATE_DOWN);
+      vaoOpen = false;
+      raOpen = false;
+
+      updateLCD("EMERGENCY CLOSE", "By Operator");
+      beep(3);
+    }
+    
     else {
       updateLCD("UNAUTHORIZED GUEST", ""); // Display name from Backend
       beep(1);

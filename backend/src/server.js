@@ -18,6 +18,8 @@ const io = new Server(server, {
   }
 });
 
+app.set('io', io)
+
 // Lắng nghe tín hiệu từ Camera và bắn lên React
 io.on('connection', (socket) => {
   console.log('🔗 Có Client kết nối WebSocket:', socket.id);

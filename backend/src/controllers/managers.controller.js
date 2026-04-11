@@ -182,7 +182,6 @@ const getOverview = async (req, res, next) => {
                 department: zone.department_name,
                 stats: {
                     today_total: parseInt(stats.today_total, 10),
-                    today_granted: parseInt(stats.today_granted, 10),
                     week_total: parseInt(stats.week_total, 10),
                     active_vehicles: parseInt(stats.active_vehicles, 10),
                     pending_approvals: parseInt(stats.pending_approvals, 10),
@@ -453,41 +452,47 @@ const manualAction = async (req, res, next) => {
         const zone = await getZoneOrFail(req, res);
         if (!zone) return;
 
-        const { gate_id, action, action_reason, note } = req.body;
+        const { lane_id, action_type, action_reason, note } = req.body;
 
-        if (!gate_id || !action) {
+        if (!lane_id || !action_type) {
             return res.status(400).json({
                 success: false,
-                message: 'Thiếu thông tin: gate_id và action là bắt buộc',
+                message: 'Thiếu thông tin: lane_id và action_type là bắt buộc',
             });
         }
 
-        if (!['OPEN', 'CLOSE'].includes(action)) {
+        if (!['open_barrier', 'close_barrier'].includes(action_type)) {
             return res.status(400).json({
                 success: false,
-                message: 'action không hợp lệ. Chỉ chấp nhận: OPEN, CLOSE',
+                message: 'action_type không hợp lệ. Chỉ chấp nhận: open_barrier, close_barrier',
             });
         }
 
         const result = await managersModel.createManagerManualAction({
-            gateId: parseInt(gate_id, 10),
-            managerId: req.user.user_id,
-            action,
+            laneId: lane_id,
             actionReason: action_reason || null,
             note: note || null,
         });
 
+        const io = req.app.get('io');
+        if (io) {
+            io.emit('manual_command', {
+                action: action_type === 'open_barrier' ? 'OPEN' : 'CLOSE',
+                operator_name: req.user.full_name || 'Manager',
+                lane_id,               
+            });
+        }
         await managersModel.logAuditAction({
             actorId: req.user.user_id,
-            actionType: action === 'OPEN' ? 'manual_open_gate' : 'manual_close_gate',
-            targetTable: 'gates',
-            targetId: parseInt(gate_id, 10),
-            actionDetails: JSON.stringify({ action, action_reason, note }),
+            actionType: action_type === 'open_barrier' ? 'manual_open_gate' : 'manual_close_gate',
+            targetTable: 'access_logs',
+            targetId: result.log_id,
+            actionDetails: JSON.stringify({ action_type, action_reason, note, lane_id}),
         });
 
         res.status(200).json({
             success: true,
-            message: action === 'OPEN' ? 'Đã mở cổng và ghi log' : 'Đã ghi log đóng cổng',
+            message: action_type === 'open_barrier' ? 'Đã mở cổng và ghi log' : 'Đã ghi log đóng cổng',
             data: result,
         });
     } catch (error) {

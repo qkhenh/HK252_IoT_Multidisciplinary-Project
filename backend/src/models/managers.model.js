@@ -398,21 +398,12 @@ const getAIPerformanceStats = async (managedZoneId) => {
 /**
  * Manager mở/đóng cổng khẩn cấp, ghi log thủ công
  */
-const createManagerManualAction = async ({ gateId, managerId, action, actionReason, note }) => {
-    const laneResult = await db.query(
-        `SELECT lane_id FROM lanes WHERE gate_id = $1 LIMIT 1`,
-        [gateId]
-    );
-    const laneId = laneResult.rows[0]?.lane_id || null;
-
+const createManagerManualAction = async ({ laneId, actionReason, note }) => {
     const result = await db.query(`
-        INSERT INTO access_logs (
-            lane_id, guard_id, access_method, action_reason, note
-        )
-        VALUES ($1, $2, 'manual_guard', $3, $4)
+        INSERT INTO access_logs (lane_id, access_method, action_reason, note)
+        VALUES ($1, 'manual_guard', $2, $3)
         RETURNING log_id, check_in_time
-    `, [laneId, managerId, actionReason || null, note || null]);
-
+        `, [laneId, actionReason, note]);
     return result.rows[0];
 };
 
