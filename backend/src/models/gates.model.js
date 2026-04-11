@@ -24,12 +24,12 @@ const checkResidentWhitelist = async (plateText) => {
             v.is_active, v.is_inside,
             u.full_name AS owner_name,
             c.phone_number AS owner_phone,
-            h.house_number, h.block_number, z.zone_name
+            c.address AS owner_address,
+            z.zone_name
         FROM vehicles v
         JOIN users u ON v.owner_user_id = u.user_id
         JOIN citizens c ON v.owner_user_id = c.user_id
-        LEFT JOIN houses h ON c.house_id = h.house_id
-        LEFT JOIN zones z ON h.zone_id = z.zone_id
+        LEFT JOIN zones z ON c.zone_id = z.zone_id
         WHERE UPPER(REPLACE(v.license_plate, '.', '')) = UPPER(REPLACE($1, '.', ''))
           AND v.is_active = true
         LIMIT 1
@@ -48,11 +48,10 @@ const checkGuestWhitelist = async (plateText) => {
             gr.guest_license_plate, gr.visit_start_time, gr.visit_end_time, gr.status,
             u.full_name AS host_name,
             c.phone_number AS host_phone,
-            h.house_number, h.block_number
+            c.address AS host_address
         FROM guest_registrations gr
         JOIN users u ON gr.host_user_id = u.user_id
         JOIN citizens c ON gr.host_user_id = c.user_id
-        LEFT JOIN houses h ON c.house_id = h.house_id
         WHERE UPPER(REPLACE(gr.guest_license_plate, '.', '')) = UPPER(REPLACE($1, '.', ''))
           AND gr.status = 'approved'
           AND gr.visit_start_time <= NOW()
@@ -130,8 +129,8 @@ const processCheckIn = async ({ laneId, plateText, confidenceScore, imageBase64 
                     type: 'resident',
                     name: vehicle.owner_name,
                     phone: vehicle.owner_phone,
-                    house_number: vehicle.house_number,
-                    block_number: vehicle.block_number,
+                    address: vehicle.owner_address,
+                    zone_name: vehicle.zone_name,
                 };
             }
         } else {
@@ -144,8 +143,7 @@ const processCheckIn = async ({ laneId, plateText, confidenceScore, imageBase64 
                     guest_name: guestRegistration.guest_name,
                     host_name: guestRegistration.host_name,
                     host_phone: guestRegistration.host_phone,
-                    house_number: guestRegistration.house_number,
-                    block_number: guestRegistration.block_number,
+                    host_address: guestRegistration.host_address,
                 };
             }
         }
@@ -154,15 +152,14 @@ const processCheckIn = async ({ laneId, plateText, confidenceScore, imageBase64 
         const logResult = await client.query(`
             INSERT INTO access_logs (
                 lane_id, vehicle_id, guest_reg_id, access_method,
-                is_access_granted, detected_text, image_snapshot_data
+                detected_text, image_snapshot_data
             )
-            VALUES ($1, $2, $3, 'ai_plate_recognition', $4, $5, $6)
+            VALUES ($1, $2, $3, 'ai_plate_recognition', $4, $5)
             RETURNING log_id, check_in_time
         `, [
             laneId,
             vehicle ? vehicle.vehicle_id : null,
             guestRegistration ? guestRegistration.registration_id : null,
-            isAccessGranted,
             plateText,
             imageBuffer,
         ]);
@@ -217,11 +214,10 @@ const verifyTokenForCheckIn = async ({ laneId, tokenData, codeType, imageBase64 
             t.token_id, t.token_data, t.issued_by,
             u.full_name AS issued_by_name,
             c_info.phone_number,
-            h.house_number, h.block_number
+            c_info.address
         FROM access_tokens t
         JOIN citizens c_info ON t.issued_by = c_info.user_id
         JOIN users u ON c_info.user_id = u.user_id
-        LEFT JOIN houses h ON c_info.house_id = h.house_id
         WHERE t.token_data = $1 AND t.is_used = false AND t.valid_until > NOW()
         LIMIT 1
     `, [tokenData]);
@@ -229,8 +225,8 @@ const verifyTokenForCheckIn = async ({ laneId, tokenData, codeType, imageBase64 
     if (tokenResult.rows.length === 0) {
         // Ghi log thất bại
         await db.query(`
-            INSERT INTO access_logs (lane_id, access_method, is_access_granted, detected_text, image_snapshot_data)
-            VALUES ($1, $2, false, $3, $4)
+            INSERT INTO access_logs (lane_id, access_method, detected_text, image_snapshot_data)
+            VALUES ($1, $2, $3, $4)
         `, [laneId, accessMethod, tokenData, imageBuffer]);
 
         return {
@@ -254,8 +250,8 @@ const verifyTokenForCheckIn = async ({ laneId, tokenData, codeType, imageBase64 
 
         // Ghi log thành công
         const logResult = await client.query(`
-            INSERT INTO access_logs (lane_id, token_id, access_method, is_access_granted, detected_text, image_snapshot_data)
-            VALUES ($1, $2, $3, true, $4, $5)
+            INSERT INTO access_logs (lane_id, token_id, access_method, detected_text, image_snapshot_data)
+            VALUES ($1, $2, $3, $4, $5)
             RETURNING log_id, check_in_time
         `, [laneId, token.token_id, accessMethod, tokenData, imageBuffer]);
 
@@ -265,7 +261,7 @@ const verifyTokenForCheckIn = async ({ laneId, tokenData, codeType, imageBase64 
             action: 'OPEN',
             log_id: logResult.rows[0].log_id,
             check_in_time: logResult.rows[0].check_in_time,
-            issued_by: `${token.issued_by_name} (${token.house_number || 'N/A'})`,
+            issued_by: `${token.issued_by_name} (${token.address || 'N/A'})`,
             message: 'Token hợp lệ. Mở cổng tự động.',
         };
 

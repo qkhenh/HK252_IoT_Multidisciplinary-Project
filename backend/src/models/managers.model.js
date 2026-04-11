@@ -24,16 +24,14 @@ const getPendingVehicles = async (managedZoneId, { limit = 20, offset = 0 } = {}
             u.full_name AS owner_name,
             u.email AS owner_email,
             c.phone_number AS owner_phone,
-            h.house_number,
-            h.block_number,
+            c.address AS owner_address,
             z.zone_name
         FROM vehicles v
         JOIN users u ON v.owner_user_id = u.user_id
         JOIN citizens c ON v.owner_user_id = c.user_id
-        JOIN houses h ON c.house_id = h.house_id
-        JOIN zones z ON h.zone_id = z.zone_id
+        JOIN zones z ON c.zone_id = z.zone_id
         WHERE v.is_active = false
-          AND z.zone_id = $1
+          AND c.zone_id = $1
         ORDER BY v.registered_at DESC
         LIMIT $2 OFFSET $3
     `, [managedZoneId, limit, offset]);
@@ -48,10 +46,8 @@ const countPendingVehicles = async (managedZoneId) => {
     const result = await db.query(`
         SELECT COUNT(*) AS total
         FROM vehicles v
-        JOIN users u ON v.owner_user_id = u.user_id
         JOIN citizens c ON v.owner_user_id = c.user_id
-        JOIN houses h ON c.house_id = h.house_id
-        WHERE v.is_active = false AND h.zone_id = $1
+        WHERE v.is_active = false AND c.zone_id = $1
     `, [managedZoneId]);
 
     return parseInt(result.rows[0].total, 10);
@@ -67,14 +63,13 @@ const getVehicleById = async (vehicleId, managedZoneId) => {
             v.is_active, v.registered_at, v.owner_user_id,
             u.full_name AS owner_name,
             c.phone_number AS owner_phone,
-            h.house_number, h.block_number,
+            c.address AS owner_address,
             z.zone_id, z.zone_name
         FROM vehicles v
         JOIN users u ON v.owner_user_id = u.user_id
         JOIN citizens c ON v.owner_user_id = c.user_id
-        JOIN houses h ON c.house_id = h.house_id
-        JOIN zones z ON h.zone_id = z.zone_id
-        WHERE v.vehicle_id = $1 AND z.zone_id = $2
+        JOIN zones z ON c.zone_id = z.zone_id
+        WHERE v.vehicle_id = $1 AND c.zone_id = $2
     `, [vehicleId, managedZoneId]);
 
     return result.rows[0] || null;
@@ -131,9 +126,7 @@ const getTrafficByDay = async (managedZoneId, days = 7) => {
     const result = await db.query(`
         SELECT
             DATE(al.check_in_time) AS date,
-            COUNT(*) AS total_entries,
-            SUM(CASE WHEN al.is_access_granted = true THEN 1 ELSE 0 END) AS granted,
-            SUM(CASE WHEN al.is_access_granted = false THEN 1 ELSE 0 END) AS denied
+            COUNT(*) AS total_entries
         FROM access_logs al
         JOIN lanes l ON al.lane_id = l.lane_id
         JOIN gates g ON l.gate_id = g.gate_id
@@ -220,21 +213,13 @@ const getQuickStats = async (managedZoneId) => {
             (SELECT COUNT(*) FROM access_logs al
              JOIN lanes l ON al.lane_id = l.lane_id
              JOIN gates g ON l.gate_id = g.gate_id
-             WHERE g.zone_id = $1 AND al.check_in_time >= CURRENT_DATE AND al.is_access_granted = true) AS today_granted,
-            (SELECT COUNT(*) FROM access_logs al
-             JOIN lanes l ON al.lane_id = l.lane_id
-             JOIN gates g ON l.gate_id = g.gate_id
              WHERE g.zone_id = $1 AND al.check_in_time >= NOW() - INTERVAL '7 days') AS week_total,
             (SELECT COUNT(*) FROM vehicles v
-             JOIN users u ON v.owner_user_id = u.user_id
              JOIN citizens c ON v.owner_user_id = c.user_id
-             JOIN houses h ON c.house_id = h.house_id
-             WHERE h.zone_id = $1 AND v.is_active = true) AS active_vehicles,
+             WHERE c.zone_id = $1 AND v.is_active = true) AS active_vehicles,
             (SELECT COUNT(*) FROM vehicles v
-             JOIN users u ON v.owner_user_id = u.user_id
              JOIN citizens c ON v.owner_user_id = c.user_id
-             JOIN houses h ON c.house_id = h.house_id
-             WHERE h.zone_id = $1 AND v.is_active = false) AS pending_approvals
+             WHERE c.zone_id = $1 AND v.is_active = false) AS pending_approvals
     `, [managedZoneId]);
 
     return result.rows[0];
@@ -258,7 +243,6 @@ const searchAccessLogs = async (managedZoneId, filters = {}) => {
             al.log_id,
             al.check_in_time,
             al.access_method,
-            al.is_access_granted,
             al.detected_text,
             al.action_reason,
             al.note,
@@ -281,7 +265,6 @@ const searchAccessLogs = async (managedZoneId, filters = {}) => {
     if (startDate) { query += ` AND al.check_in_time >= $${p}`; params.push(startDate); p++; }
     if (endDate)   { query += ` AND al.check_in_time <= $${p}`; params.push(endDate);   p++; }
     if (accessMethod) { query += ` AND al.access_method = $${p}`; params.push(accessMethod); p++; }
-    if (isGranted !== undefined) { query += ` AND al.is_access_granted = $${p}`; params.push(isGranted); p++; }
     if (licensePlate) {
         query += ` AND (v.license_plate ILIKE $${p} OR al.detected_text ILIKE $${p})`;
         params.push(`%${licensePlate}%`); p++;
@@ -299,7 +282,7 @@ const searchAccessLogs = async (managedZoneId, filters = {}) => {
  * Đếm tổng số logs theo điều kiện filter
  */
 const countAccessLogs = async (managedZoneId, filters = {}) => {
-    const { startDate, endDate, accessMethod, isGranted, licensePlate, gateId } = filters;
+    const { startDate, endDate, accessMethod, licensePlate, gateId } = filters;
 
     let query = `
         SELECT COUNT(*) AS total
@@ -316,7 +299,6 @@ const countAccessLogs = async (managedZoneId, filters = {}) => {
     if (startDate) { query += ` AND al.check_in_time >= $${p}`; params.push(startDate); p++; }
     if (endDate)   { query += ` AND al.check_in_time <= $${p}`; params.push(endDate);   p++; }
     if (accessMethod) { query += ` AND al.access_method = $${p}`; params.push(accessMethod); p++; }
-    if (isGranted !== undefined) { query += ` AND al.is_access_granted = $${p}`; params.push(isGranted); p++; }
     if (licensePlate) {
         query += ` AND (v.license_plate ILIKE $${p} OR al.detected_text ILIKE $${p})`;
         params.push(`%${licensePlate}%`); p++;
@@ -336,7 +318,6 @@ const getLogWithImages = async (logId, managedZoneId) => {
             al.log_id,
             al.check_in_time,
             al.access_method,
-            al.is_access_granted,
             al.detected_text,
             al.action_reason,
             al.note,
@@ -394,12 +375,7 @@ const getAIPerformanceStats = async (managedZoneId) => {
     const result = await db.query(`
         SELECT
             COUNT(*) AS total_ai_events,
-            COUNT(*) FILTER (WHERE is_access_granted = true) AS successful_recognitions,
-            COUNT(*) FILTER (WHERE note IS NOT NULL) AS corrections_submitted,
-            ROUND(
-                100.0 * COUNT(*) FILTER (WHERE is_access_granted = true) / NULLIF(COUNT(*), 0),
-                1
-            ) AS accuracy_rate_percent
+            COUNT(*) FILTER (WHERE note IS NOT NULL) AS corrections_submitted
         FROM access_logs al
         JOIN lanes l ON al.lane_id = l.lane_id
         JOIN gates g ON l.gate_id = g.gate_id
@@ -411,8 +387,6 @@ const getAIPerformanceStats = async (managedZoneId) => {
     const row = result.rows[0];
     return {
         total_ai_events: parseInt(row.total_ai_events, 10) || 0,
-        successful_recognitions: parseInt(row.successful_recognitions, 10) || 0,
-        accuracy_rate_percent: parseFloat(row.accuracy_rate_percent) || 0,
         corrections_submitted: parseInt(row.corrections_submitted, 10) || 0,
     };
 };
@@ -430,15 +404,14 @@ const createManagerManualAction = async ({ gateId, managerId, action, actionReas
         [gateId]
     );
     const laneId = laneResult.rows[0]?.lane_id || null;
-    const isAccessGranted = action === 'OPEN';
 
     const result = await db.query(`
         INSERT INTO access_logs (
-            lane_id, guard_id, access_method, is_access_granted, action_reason, note
+            lane_id, guard_id, access_method, action_reason, note
         )
-        VALUES ($1, $2, 'manual_guard', $3, $4, $5)
+        VALUES ($1, $2, 'manual_guard', $3, $4)
         RETURNING log_id, check_in_time
-    `, [laneId, managerId, isAccessGranted, actionReason || null, note || null]);
+    `, [laneId, managerId, actionReason || null, note || null]);
 
     return result.rows[0];
 };
@@ -470,8 +443,7 @@ const checkCitizenInZone = async (citizenId, managedZoneId) => {
     const result = await db.query(`
         SELECT c.user_id
         FROM citizens c
-        JOIN houses h ON c.house_id = h.house_id
-        WHERE c.user_id = $1 AND h.zone_id = $2
+        WHERE c.user_id = $1 AND c.zone_id = $2
     `, [citizenId, managedZoneId]);
     return result.rows.length > 0;
 };

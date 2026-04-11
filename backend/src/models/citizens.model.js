@@ -300,7 +300,6 @@ const getMyAccessLogs = async (citizenId, { page = 1, limit = 20, from, to } = {
              al.check_in_time,
              al.detected_text,
              al.access_method,
-             al.is_access_granted,
              al.action_reason,
              v.license_plate,
              l.lane_name,

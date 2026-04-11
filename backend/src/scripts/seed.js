@@ -34,19 +34,6 @@ const seedData = async () => {
         `);
         console.log(`   ✅ Đã tạo ${zonesResult.rowCount} zones\n`);
         
-        // 2. Tạo Houses
-        console.log('🏠 Tạo houses...');
-        const housesResult = await db.query(`
-            INSERT INTO houses (zone_id, house_number, block_number, floor_number) VALUES
-            (1, 'A101', 'Block A', 1),
-            (1, 'A102', 'Block A', 1),
-            (1, 'A201', 'Block A', 2),
-            (2, 'B101', 'Block B', 1)
-            ON CONFLICT DO NOTHING
-            RETURNING house_id, house_number
-        `);
-        console.log(`   ✅ Đã tạo ${housesResult.rowCount} houses\n`);
-        
         // 3. Tạo Gates (không còn cột direction — direction nằm ở lanes)
         console.log('🚧 Tạo gates...');
         const gatesResult = await db.query(`
@@ -110,16 +97,16 @@ const seedData = async () => {
                     ON CONFLICT (user_id) DO NOTHING
                 `, [user.user_id]);
             } else if (user.role === 'guard') {
-                // assigned_lane_id là VARCHAR, trỏ đến lanes.lane_id
+                // assigned_gate_id là INT, trỏ đến gates.gate_id
                 await db.query(`
-                    INSERT INTO security_guards (user_id, assigned_lane_id, employee_code, shift_start, shift_end) VALUES
-                    ($1, 'MAIN-IN', 'GD001', '06:00:00', '14:00:00')
+                    INSERT INTO security_guards (user_id, assigned_gate_id, employee_code, shift_start, shift_end) VALUES
+                    ($1, 1, 'GD001', '06:00:00', '14:00:00')
                     ON CONFLICT (user_id) DO NOTHING
                 `, [user.user_id]);
             } else if (user.role === 'citizen') {
                 await db.query(`
-                    INSERT INTO citizens (user_id, house_id, phone_number, identity_card_number, is_house_owner) VALUES
-                    ($1, 1, '0901234567', '079123456789', true)
+                    INSERT INTO citizens (user_id, zone_id, address, phone_number, identity_card_number, is_house_owner) VALUES
+                    ($1, 1, 'Tòa A, Tầng 1, Căn 101, Khu A', '0901234567', '079123456789', true)
                     ON CONFLICT (user_id) DO NOTHING
                 `, [user.user_id]);
             }
@@ -162,8 +149,8 @@ const seedData = async () => {
         console.log('🎉 Seed dữ liệu hoàn tất!\n');
         console.log('📋 Test accounts:');
         console.log('   - manager_thinh / password123 (Manager - Khu A)');
-        console.log('   - guard_nam     / password123 (Guard   - Làn MAIN-IN)');
-        console.log('   - citizen_hoa   / password123 (Citizen - Nhà A101)\n');
+        console.log('   - guard_nam     / password123 (Guard   - Cổng Chính Khu A)');
+        console.log('   - citizen_hoa   / password123 (Citizen - Tòa A, Tầng 1, Căn 101)\n');
         
     } catch (error) {
         console.error('❌ Lỗi khi seed:', error);

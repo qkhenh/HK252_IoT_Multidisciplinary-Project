@@ -14,14 +14,12 @@ const findValidToken = async (tokenData) => {
              at.valid_until,
              at.is_used,
              u.full_name as issued_by_name,
+             c.address,
              c.phone_number as issued_by_phone,
-             h.house_number,
-             h.block_number,
              CASE WHEN at.valid_until < NOW() THEN true ELSE false END as is_expired
          FROM access_tokens at
          JOIN citizens c ON at.issued_by = c.user_id
          JOIN users u ON c.user_id = u.user_id
-         LEFT JOIN houses h ON c.house_id = h.house_id
          WHERE at.token_data = $1
          ORDER BY at.valid_from DESC
          LIMIT 1`,
@@ -57,9 +55,9 @@ const markOTPAsUsed = async (tokenId) => {
 const logOTPAccess = async ({ laneId, guardId, tokenId, note }) => {
     const result = await db.query(
         `INSERT INTO access_logs (
-             lane_id, guard_id, token_id, access_method, is_access_granted, note
+             lane_id, guard_id, token_id, access_method, note
          )
-         VALUES ($1, $2, $3, 'ai_camera_otp', true, $4)
+         VALUES ($1, $2, $3, 'ai_camera_otp', $4)
          RETURNING log_id, check_in_time`,
         [laneId, guardId, tokenId || null, note || null]
     );
@@ -67,11 +65,11 @@ const logOTPAccess = async ({ laneId, guardId, tokenId, note }) => {
 };
 
 /**
- * Kiểm tra guard có tồn tại không và lấy assigned_lane_id
+ * Kiểm tra guard có tồn tại không và lấy assigned_gate_id
  */
 const checkGuardAssignment = async (guardId) => {
     const result = await db.query(
-        `SELECT sg.user_id, sg.assigned_lane_id, u.full_name
+        `SELECT sg.user_id, sg.assigned_gate_id, u.full_name
          FROM security_guards sg
          JOIN users u ON sg.user_id = u.user_id
          WHERE sg.user_id = $1`,
@@ -84,7 +82,7 @@ const checkGuardAssignment = async (guardId) => {
     return {
         exists: true,
         full_name: guard.full_name,
-        assigned_lane_id: guard.assigned_lane_id,
+        assigned_gate_id: guard.assigned_gate_id,
     };
 };
 
@@ -110,15 +108,13 @@ const COMMON_REASONS = [
  * @param {Object} params
  */
 const logManualAction = async ({ laneId, guardId, actionType, actionReason, note, imageSnapshotBuffer }) => {
-    const isAccessGranted = actionType === 'open_barrier';
-
     const result = await db.query(
         `INSERT INTO access_logs (
-             lane_id, guard_id, access_method, is_access_granted, action_reason, note, image_snapshot_data
+             lane_id, guard_id, access_method, action_reason, note, image_snapshot_data
          )
-         VALUES ($1, $2, 'manual_guard', $3, $4, $5, $6)
-         RETURNING log_id, check_in_time, is_access_granted`,
-        [laneId, guardId, isAccessGranted, actionReason || null, note || null, imageSnapshotBuffer || null]
+         VALUES ($1, $2, 'manual_guard', $3, $4, $5)
+         RETURNING log_id, check_in_time`,
+        [laneId, guardId, actionReason || null, note || null, imageSnapshotBuffer || null]
     );
 
     return result.rows[0];
@@ -150,7 +146,6 @@ const getRecentAccessLogs = async (laneId, limit = 20) => {
              al.log_id,
              al.check_in_time,
              al.access_method,
-             al.is_access_granted,
              al.detected_text,
              al.action_reason,
              al.note,
@@ -179,9 +174,7 @@ const getGateStats = async (laneId) => {
     const result = await db.query(
         `SELECT
              COUNT(*) FILTER (WHERE check_in_time >= NOW() - INTERVAL '1 hour') as last_hour,
-             COUNT(*) FILTER (WHERE check_in_time >= NOW() - INTERVAL '24 hours') as last_24h,
-             COUNT(*) FILTER (WHERE is_access_granted = true AND check_in_time >= NOW() - INTERVAL '24 hours') as granted_24h,
-             COUNT(*) FILTER (WHERE is_access_granted = false AND check_in_time >= NOW() - INTERVAL '24 hours') as denied_24h
+             COUNT(*) FILTER (WHERE check_in_time >= NOW() - INTERVAL '24 hours') as last_24h
          FROM access_logs
          WHERE lane_id = $1`,
         [laneId]
@@ -243,7 +236,7 @@ const addAICorrection = async (logId, guardId, correctedPlateText) => {
  */
 const getLogById = async (logId) => {
     const result = await db.query(
-        `SELECT al.log_id, al.lane_id, al.detected_text, al.note, al.is_access_granted
+        `SELECT al.log_id, al.lane_id, al.detected_text, al.note
          FROM access_logs al
          WHERE al.log_id = $1`,
         [logId]

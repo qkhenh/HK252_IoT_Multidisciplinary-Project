@@ -82,16 +82,6 @@ CREATE TABLE zones (
     created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Căn hộ / nhà trong khu (thuộc một Zone)
-CREATE TABLE houses (
-    house_id     SERIAL PRIMARY KEY,
-    zone_id      INT REFERENCES zones(zone_id) ON DELETE SET NULL,
-    house_number VARCHAR(20) NOT NULL,
-    block_number VARCHAR(20),
-    floor_number INT,
-    created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
 -- Cổng vật lý (một Zone có nhiều Gate)
 -- NOTE: direction đã được chuyển xuống bảng lanes
 CREATE TABLE gates (
@@ -141,17 +131,18 @@ CREATE TABLE users (
 -- Thông tin đặc thù của Cư dân
 CREATE TABLE citizens (
     user_id              INT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
-    house_id             INT REFERENCES houses(house_id) ON DELETE SET NULL,
+    zone_id              INT REFERENCES zones(zone_id) ON DELETE SET NULL,
+    address              VARCHAR(255),
     phone_number         VARCHAR(15) UNIQUE,
     identity_card_number VARCHAR(20),
     is_house_owner       BOOLEAN DEFAULT FALSE
 );
 
 -- Thông tin đặc thù của Bảo vệ
--- assigned_gate_id: cổng xe Guard được phân công trực
+-- assigned_gate_id: cổng xe Guard được phân công trực (một Guard quản lý tất cả lane trong gate)
 CREATE TABLE security_guards (
     user_id          INT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
-    assigned_gate_id VARCHAR(30) REFERENCES gates(gate_id) ON DELETE SET NULL,
+    assigned_gate_id INT REFERENCES gates(gate_id) ON DELETE SET NULL,
     employee_code    VARCHAR(20) UNIQUE,
     shift_start      TIME,
     shift_end        TIME
@@ -228,7 +219,7 @@ CREATE TABLE access_tokens (
 --   image_snapshot_data: ảnh chụp tại thời điểm ra vào (BYTEA)
 CREATE TABLE access_logs (
     log_id              SERIAL PRIMARY KEY,
-    lane_id             VARCHAR(30) REFERENCES gates(gate_id) ON DELETE SET NULL,
+    lane_id             VARCHAR(30) REFERENCES lanes(lane_id) ON DELETE SET NULL,
     vehicle_id          INT REFERENCES vehicles(vehicle_id) ON DELETE SET NULL,
     guest_reg_id        INT REFERENCES guest_registrations(registration_id) ON DELETE SET NULL,
     token_id            INT REFERENCES access_tokens(token_id) ON DELETE SET NULL,
@@ -243,11 +234,13 @@ CREATE TABLE access_logs (
 
 -- Bảng audit trail: lịch sử thao tác hệ thống
 --   actor_id     : bất kỳ user nào (Guard, Manager, Citizen) — không chỉ Manager
---   action_type  : VD 'APPROVE_VEHICLE', 'REJECT_VEHICLE', 'AI_CORRECTION', 'MANUAL_OPEN'
+--   device_id    : thiết bị IoT liên quan (nếu log là trạng thái phần cứng)
+--   action_type  : VD 'APPROVE_VEHICLE', 'REJECT_VEHICLE', 'AI_CORRECTION', 'MANUAL_OPEN', 'DEVICE_STATUS'
 --   action_details: JSON chứa metadata chi tiết của hành động
 CREATE TABLE system_audit_logs (
     audit_id       SERIAL PRIMARY KEY,
     actor_id       INT REFERENCES users(user_id) ON DELETE SET NULL,
+    device_id      INT REFERENCES iot_devices(device_id) ON DELETE SET NULL,
     action_type    VARCHAR(50),
     target_table   VARCHAR(50),
     target_id      INT,
