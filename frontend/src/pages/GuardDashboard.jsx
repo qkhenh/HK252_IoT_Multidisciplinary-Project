@@ -12,7 +12,7 @@ const GuardDashboard = () => {
   const [liveFrameIn, setLiveFrameIn] = useState(null);
   
   const [ownerName, setOwnerName] = useState('');
-  const [vehicleColor, setVehicleColor] = useState('');
+  const [vehicleType, setVehicleType] = useState('');
 
   const [currentTime, setCurrentTime] = useState('');
   useEffect(() => {
@@ -37,7 +37,7 @@ const GuardDashboard = () => {
         
         // Lấy dữ liệu THẬT 100% từ Database (thông qua Python)
         const fetchedName = data.owner_name;
-        const fetchedColor = data.vehicle_color;
+        const fetchedType = data.vehicle_type;
         
         if (fetchedName && fetchedName !== 'User' && fetchedName !== 'Khách lạ') {
             setOwnerName(fetchedName);
@@ -45,11 +45,7 @@ const GuardDashboard = () => {
             setOwnerName('KHÁCH CHƯA ĐĂNG KÝ');
         }
 
-        if (fetchedColor && fetchedColor !== 'Không rõ' && fetchedColor.trim() !== '') {
-            setVehicleColor(fetchedColor);
-        } else {
-            setVehicleColor('Không xác định');
-        }
+        setVehicleType(fetchedType || 'N/A');
 
         setTimeout(() => {
             setScanResult(null);
@@ -170,8 +166,8 @@ const GuardDashboard = () => {
 
                 <div className="flex items-center space-x-6">
                   <div className="flex items-center space-x-2">
-                    <span className="text-gray-600 font-bold w-24">Color:</span>
-                    <span className="text-base font-bold text-gray-800 capitalize">{vehicleColor}</span>
+                    <span className="text-gray-600 font-bold w-24">Type:</span>
+                    <span className="text-base font-bold text-gray-800 capitalize">{vehicleType}</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <span className="text-gray-600 font-bold w-16">Status:</span>

@@ -131,6 +131,7 @@ const processCheckIn = async ({ laneId, plateText, confidenceScore, imageBase64 
                     phone: vehicle.owner_phone,
                     address: vehicle.owner_address,
                     zone_name: vehicle.zone_name,
+                    vehicle_type: vehicle.vehicle_type,
                 };
             }
         } else {

@@ -33,10 +33,9 @@ def send_to_backend_api(plate_text, processing_time_ms, image_path):
             full_image_base64 = base64.b64encode(img_file.read()).decode('utf-8')
             
         payload = {
-            "gate_id": GATE_ID,
+            "lane_id": "MAIN-IN",
             "plate_text": plate_text,
-            "processing_time_ms": processing_time_ms,
-            "full_image_base64": f"data:image/jpeg;base64,{full_image_base64}"
+            "image_base64": f"data:image/jpeg;base64,{full_image_base64}"
         }
         response = requests.post(NODEJS_API_URL, json=payload)
         return response.json(), f"data:image/jpeg;base64,{full_image_base64}"
@@ -111,15 +110,19 @@ def main():
                     api_resp, img_base64 = send_to_backend_api(plate_text, processing_time_ms, temp_path)
                     
                     if api_resp and sio.connected:
-                        print(f"[INFO] Backend trả về: {api_resp.get('data', {}).get('action')}")
+                        data = api_resp.get('data', {})
+                        print(f"[INFO] Backend trả về: {data.get('action')}")
                         
                         # Phân tích kết quả API và bắn tín hiệu sang React UI
-                        status = 'success' if api_resp.get('data', {}).get('action') == 'OPEN' else 'fail'
+                        status = 'success' if data.get('action') == 'OPEN' else 'fail'
+                        owner_info = data.get('owner_info') or {}
                         
                         sio.emit('scan_result', {
                             'status': status,
                             'plate': plate_text,
-                            'captured_image': img_base64
+                            'captured_image': img_base64,
+                            'owner_name': owner_info.get('name', 'Khách lạ'),
+                            'vehicle_type': owner_info.get('vehicle_type', '')
                         })
             
             if os.path.exists(temp_path):

@@ -67,10 +67,9 @@ def send_to_backend(plate_text, processing_time_ms, image_path):
             full_image_base64 = base64.b64encode(img_file.read()).decode('utf-8')
             
         payload = {
-            "gate_id": GATE_ID,
+            "lane_id": "MAIN-IN",
             "plate_text": plate_text,
-            "processing_time_ms": processing_time_ms,
-            "full_image_base64": f"data:image/jpeg;base64,{full_image_base64}"
+            "image_base64": f"data:image/jpeg;base64,{full_image_base64}"
         }
         response = requests.post(NODEJS_BACKEND_URL, json=payload)
         return response.json(), f"data:image/jpeg;base64,{full_image_base64}"
@@ -111,15 +110,10 @@ def process_and_authorize(frame, current_plate=""):
             print(data)
             # ------------------------------------------
             
-            details = data.get("details") or {}
-            
-            # Dùng 'or {}' liên tục để né lỗi NoneType
-            citizen_info = details.get("citizen") or details.get("owner_info") or {}
-            raw_name = data.get("name") or details.get("name") or citizen_info.get("name") or "Khách lạ"
+            owner_info = data.get("owner_info") or {}
+            raw_name = owner_info.get("name", "Khách lạ")
             clean_name = strip_accents(raw_name)
-
-            vehicle_info = details.get("vehicle") or details.get("vehicle_info") or {}
-            v_color = data.get("color") or details.get("color") or vehicle_info.get("color") or ""
+            v_type = owner_info.get("vehicle_type", "")
 
             # Nháy dữ liệu lên Frontend
             status = 'success' if action == 'OPEN' else 'fail'
@@ -129,12 +123,12 @@ def process_and_authorize(frame, current_plate=""):
                     'plate': plate_text,
                     'captured_image': img_base64,
                     'owner_name': raw_name,
-                    'vehicle_color': str(v_color)
+                    'vehicle_type': v_type
                 })
 
             # Bắn lệnh xuống Mạch Arduino
             if action == "OPEN":
-                print(f"🔓 BÁO WEBSOCKET MỞ CỔNG | Chủ: {raw_name} | Màu: {v_color}")
+                print(f"🔓 BÁO WEBSOCKET MỞ CỔNG | Chủ: {raw_name} | Loại: {v_type}")
                 if ser: ser.write(f"ENTRY_GO:{clean_name}\n".encode())
             else:
                 print(f"⛔ BÁO TỪ CHỐI | Lỗi: {data.get('message', 'Không có quyền')}")

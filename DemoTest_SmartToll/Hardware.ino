@@ -26,16 +26,13 @@ bool vaoOpen = false;
 bool raOpen = false;
 
 void setup() {
-  Serial.begin(9600); 
-  Serial.begin(9600); 
+  Serial.begin(9600);
   lcd.init(); lcd.backlight();
   
   sVao.attach(6);
   sRa.attach(7);
   pinMode(buzzer, OUTPUT);
   
-  sVao.write(GATE_DOWN);
-  sRa.write(GATE_DOWN);
   sVao.write(GATE_DOWN);
   sRa.write(GATE_DOWN);
   
