@@ -39,17 +39,35 @@ sio = socketio.Client()
 
 @sio.on('manual_command')
 def on_manual_command(data):
-    action = data.get('action')
+    action = data.get('action') # 'OPEN' hoặc 'CLOSE'
+    lane_id = data.get('lane_id', 'MAIN-IN')
     operator = data.get('operator_name', 'Guard')
     clean_op = strip_accents(operator)
     
     if action == 'OPEN' and ser:
-        ser.write(f"ENTRY_GO:{clean_op}\n".encode())
-        print(f"[MANUAL] Open by: {clean_op}")
-        
+        if "OUT" in lane_id:
+            ser.write(f"MANUAL_OPEN_OUT:{clean_op}\n".encode())
+            print(f"🚨 [MANUAL] Yêu cầu MỞ CỔNG RA bởi: {clean_op}")
+        else:
+            ser.write(f"MANUAL_OPEN_IN:{clean_op}\n".encode())
+            print(f"🚨 [MANUAL] Yêu cầu MỞ CỔNG VÀO bởi: {clean_op}")
+            
     elif action == 'CLOSE' and ser:
         ser.write(b"FORCE_CLOSE\n")
-        print(f"[MANUAL] Emergency Close by: {clean_op}")
+        print(f"🔒 [MANUAL] Kết thúc sự cố - ĐÓNG CỔNG bởi: {clean_op}")
+# @sio.on('manual_command')
+# def on_manual_command(data):
+#     action = data.get('action')
+#     operator = data.get('operator_name', 'Guard')
+#     clean_op = strip_accents(operator)
+    
+#     if action == 'OPEN' and ser:
+#         ser.write(f"ENTRY_GO:{clean_op}\n".encode())
+#         print(f"[MANUAL] Open by: {clean_op}")
+        
+#     elif action == 'CLOSE' and ser:
+#         ser.write(b"FORCE_CLOSE\n")
+#         print(f"[MANUAL] Emergency Close by: {clean_op}")
         
 def connect_websocket():
     try:
@@ -127,11 +145,16 @@ def process_and_authorize(frame, current_plate=""):
                     'vehicle_type': v_type,
                     'access_type': access_type,
                 })
-
-            # Bắn lệnh xuống Mạch Arduino
             if action == "OPEN":
                 print(f"🔓 BÁO WEBSOCKET MỞ CỔNG | Chủ: {raw_name} | Loại: {v_type}")
                 if ser: ser.write(f"ENTRY_GO:{clean_name}\n".encode())
+                
+            # --- KIỂM TRA LỖI ANTI-PASSBACK ---
+            elif action == "ALARM" or access_type == "anti_passback":
+                print(f"🚨 BÁO ĐỘNG ANTI-PASSBACK | Biển số: {plate_text}")
+                if ser: ser.write(f"ALARM_FAKE:{plate_text}\n".encode())
+                
+            # CÁC LỖI KHÁCH LẠ THÔNG THƯỜNG
             else:
                 print(f"⛔ BÁO TỪ CHỐI | Lỗi: {data.get('message', 'Không có quyền')}")
                 if ser: ser.write(f"DENY_PLATE:{plate_text}\n".encode())

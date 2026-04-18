@@ -62,6 +62,7 @@ const GuardDashboard = () => {
     <div className="h-screen bg-gray-50 font-sans flex flex-col w-full overflow-hidden">
       
       {/* NAVBAR */}
+      {/* NAVBAR */}
       <div className="bg-[#005B9F] flex items-center justify-between px-6 py-3 shadow-md w-full border-b-4 border-[#FF6B00] shrink-0">
         <div className="flex items-center space-x-6 flex-shrink-0">
           <h1 className="text-2xl font-black italic text-white flex items-center tracking-tighter m-0">
@@ -79,10 +80,15 @@ const GuardDashboard = () => {
           </button>
         </div>
 
+        {/* --- ĐÃ XÓA AUTO MODE, THÊM LINK CHUYỂN TRANG CHO MANUAL MODE --- */}
         <div className="flex items-center space-x-16 font-bold text-white flex-1 justify-center text-sm tracking-wider">
           <span className="cursor-pointer border-b-2 border-white pb-1">DASHBOARD</span>
-          <span className="cursor-pointer hover:text-[#FF6B00] transition-colors">AUTO MODE</span>
-          <span className="cursor-pointer hover:text-[#FF6B00] transition-colors">MANUAL MODE</span>
+          <span 
+            className="cursor-pointer hover:text-[#FF6B00] transition-colors"
+            onClick={() => navigate('/manual-mode')}
+          >
+            MANUAL MODE
+          </span>
         </div>
 
         <div className="flex items-center space-x-2 font-bold text-white flex-shrink-0 bg-blue-800 px-3 py-1.5 rounded-md border border-blue-700 text-sm">
