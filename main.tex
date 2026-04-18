@@ -1,0 +1,1559 @@
+% !TeX program = lualatex
+% FORMAT AND PACKAGES
+% {
+\documentclass[a4paper]{article}
+\usepackage{fontspec}
+% \setmainfont{Times New Roman} % Or another font with Vietnamese support
+% \usepackage[T1,T5]{fontenc} % Replaced by fontspec for LuaLaTeX
+\usepackage{lmodern}       % scalable Latin Modern fonts
+% Disable microtype expansion if non-scalable fonts might be used
+\usepackage[expansion=false]{microtype}     % micro-typography (load after fonts)
+\usepackage{lastpage}
+% \usepackage[utf8]{inputenc} % Not needed with LuaLaTeX
+\usepackage[vietnamese,english]{babel}  
+\usepackage{textcomp} 
+\usepackage{ragged2e}
+\usepackage{parskip}
+\usepackage{float}
+\usepackage{a4wide,amssymb,epsfig,latexsym,multicol,array,hhline,fancyhdr}
+\usepackage{amsmath}
+\usepackage[lined,boxed,commentsnumbered]{algorithm2e}
+\usepackage{enumerate}
+\usepackage{xcolor}
+\usepackage{graphicx}							% Standard graphics package
+\usepackage{array}
+\usepackage{tabularx, caption}
+\usepackage{wrapfig}
+\usepackage{multirow}
+\usepackage{multicol}
+\usepackage{rotating}
+\usepackage{graphics}
+\usepackage{geometry}
+\usepackage{setspace}
+\usepackage{epsfig}
+\usepackage{tikz}
+\usepackage{xfrac}
+\usepackage{bm}
+\usepackage{multirow}
+\usepackage{longtable}
+\usepackage{listings} %for pasting code (python, c++, java,...)
+\usepackage{xcolor}
+\usepackage{placeins} %for keep picture sequen
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage[colorlinks]{hyperref}
+\usepackage{tcolorbox}
+\usepackage{caption}
+\usepackage{makecell}
+\usepackage{booktabs}
+\usepackage{pifont}
+\usepackage{subcaption}
+\usepackage{calc}
+\usepackage{enumitem}
+\usepackage{graphicx}
+\usepackage[
+ sort=none,% no sorting or indexing required
+ abbreviations,% create list of abbreviations
+ symbols,% create list of symbols
+ stylemods,style=list, % set the default glossary style
+ nogroupskip, nonumberlist, nomain
+]{glossaries-extra}
+
+\usepackage[
+    backend=biber,
+    style=numeric, % Hoặc 'apa', 'ieee' tùy yêu cầu
+    sorting=none   % Sắp xếp theo thứ tự xuất hiện
+]{biblatex}
+\setlength{\bibitemsep}{1em} % Tăng khoảng cách giữa các tài liệu tham khảo
+\addbibresource{citations.bib} % Removed incorrect file name
+
+\newcommand{\cmark}{\ding{51}} % Dấu tick
+\newcommand{\xmark}{\ding{55}} % Dấu chéo
+%% Color
+
+\graphicspath{{image/}}
+\newlength{\ucLeft}
+
+% FORMATTING
+% {
+\DeclareMathOperator{\arccot}{arccot}
+\captionsetup[table]{name=Table}
+\captionsetup[figure]{name=Figure}
+\newenvironment{Description}{\list{}{%
+    \let\makelabel\descriptionlabel    % this comes from the original description environment
+    \setlength{\rightmargin}{\leftmargin}% this comes from the original quote environment
+    \setlength{\labelwidth}{0pt}%          this is new
+    }}{\endlist}
+
+\addbibresource{citations.bib}
+    
+\hypersetup{urlcolor=blue,linkcolor=black,citecolor=black,colorlinks=true} 
+\usetikzlibrary{arrows,snakes,backgrounds}
+\definecolor{mathblue}{RGB}{0,114,188}
+\newtheorem{theorem}{{\bf Theorem}}
+\newtheorem{property}{{\bf Property}}
+\newtheorem{proposition}{{\bf Proposition}}
+\newtheorem{corollary}[proposition]{{\bf Corollary}}
+\newtheorem{lemma}[proposition]{{\bf Lemma}}
+
+\AtBeginDocument{\renewcommand{\listfigurename}{List of Figures}}
+\AtBeginDocument{\renewcommand{\listtablename}{List of Tables}}
+\AtBeginDocument{\renewcommand*\contentsname{Contents}}
+\AtBeginDocument{\renewcommand*\refname{References}}
+
+\setlength{\headheight}{40pt}
+\pagestyle{fancy}
+\fancyhead{} % clear all header fields
+\fancyhead[L]{
+ \begin{tabular}{rl}
+    \begin{picture}(25,15)(0,0)
+    \put(0,-8){\includegraphics[width=8mm, height=8mm]{hcmut.png}}
+   \end{picture}&
+	\begin{tabular}{l}
+		\textbf{\bf \ttfamily University of Technology, Ho Chi Minh City}\\
+		\textbf{\bf \ttfamily Faculty of Computer Science and Engineering}
+	\end{tabular} 	
+ \end{tabular}
+}
+\fancyhead[R]{
+	\begin{tabular}{l}
+		\tiny \bf \\
+		\tiny \bf 
+	\end{tabular}  }
+\fancyfoot{} % clear all footer fields
+\fancyfoot[L]{\scriptsize \ttfamily IoT Multidisciplinary Project - Academic year 2024-2025}
+\fancyfoot[R]{\scriptsize \ttfamily Page {\thepage}/\pageref{LastPage}}
+\renewcommand{\headrulewidth}{0.3pt}
+\renewcommand{\footrulewidth}{0.3pt}
+
+\setcounter{secnumdepth}{4}
+\setcounter{tocdepth}{4}
+
+\makeatletter
+\newcounter {subsubsubsection}[subsubsection]
+\renewcommand\thesubsubsubsection{\thesubsubsection .\@alph\c@subsubsubsection}
+\newcommand\subsubsubsection{\@startsection{subsubsubsection}{4}{\z@}%
+                                     {-3.25ex\@plus -1ex \@minus -.2ex}%
+                                     {1.5ex \@plus .2ex}%
+                                     {\normalfont\normalsize\bfseries}}
+\newcommand*\l@subsubsubsection{\@dottedtocline{3}{10.0em}{4.1em}}
+\newcommand*{\subsubsubsectionmark}[1]{}
+\makeatother
+% }
+
+% ACRONYMS & SYMBOLS
+% {
+\setabbreviationstyle{long-short}
+\newabbreviation{ode}{ODE}{(First-Order) Ordinary Differential Equation}
+\newabbreviation{ivp}{IVP}{Initial-Value Problem}
+\newabbreviation{lte}{LTE}{Local Truncation Error}
+\newabbreviation{ds}{DS}{Dynamical System}
+\newabbreviation{fig}{Fig.}{Figure}
+\newabbreviation{tab}{Tab.}{Table}
+\newabbreviation{sys}{Sys.}{System of Equations}
+\newabbreviation{eq}{Eq.}{Equation}
+\newabbreviation{eg}{e.g.}{For Example}
+\newabbreviation{ie}{i.e.}{That Is}
+\glsxtrnewsymbol[description = {Set of natural numbers}]{natural}{\ensuremath{\mathbb{N}}}
+\glsxtrnewsymbol[description = {Set of real numbers}]{real}{\ensuremath{\mathbb{R}}}
+\glsxtrnewsymbol[description = {Set of positive real numbers}]{real_positive}{\ensuremath{\mathbb{R}^+}}
+% }
+
+% DOCUMENT
+\begin{document}
+\justifying
+% TITLE PAGE
+\begin{titlepage}
+\begin{center}
+VIETNAM NATIONAL UNIVERSITY, HO CHI MINH CITY \\
+UNIVERSITY OF TECHNOLOGY \\
+FACULTY OF COMPUTER SCIENCE AND ENGINEERING
+\end{center}
+
+\vspace{1cm}
+
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[width=3cm]{hcmut.png}
+\end{center}
+\end{figure}
+
+\vspace{1cm}
+
+\begin{center}
+\begin{tabular}{c}
+\multicolumn{1}{l}{\textbf{{\Large IoT MULTIDISCIPLINARY PROJECT}}}\\
+~~\\
+~~\\
+\hline
+\\
+\multicolumn{1}{l}{\textbf{{\Large Project}}}\\
+\\
+\textbf{\textit{{\Huge Smart Toll Gate System}}}\\
+\\
+\hline
+\end{tabular}
+\end{center}
+
+\vspace{2cm}
+
+\begin{table}[h]
+\centering
+    \begin{tabular}{rl}
+    \hspace{3 cm}\textbf{Instructor(s)}:
+    & Võ Thị Ngọc Châu\\
+
+    & \\[10pt]
+    \textbf{Students}: &  Phùng Gia Huy - 2352406 \emph{(Group CC01 - Team 05)} \\
+    &  Đặng Quốc Khánh - 2352515 \emph{(Group CC01 - Team 05, \textbf{Leader})}\\
+    &  Ngô Xuân Kiên - 2352642 \emph{(Group CC01 - Team 05)}\\
+    &  Trần Ngọc Thoại - 2353147 \emph{(Group CC01 - Team 05)}\\
+    \end{tabular}
+\end{table}
+
+\begin{center}
+{\footnotesize HO CHI MINH CITY, APRIL 2026}
+\end{center}
+\end{titlepage}
+
+%list of content
+\pagebreak
+\tableofcontents
+\pagebreak
+
+
+% Member list
+\section*{Member list \& Workload}
+\addcontentsline{toc}{section}{Member list \& Workload}
+\begin{center}
+\begin{table}[h]
+\centering
+\renewcommand{\arraystretch}{1.5}
+\begin{tabular}{|c|c|c|p{7cm}|c|}
+\hline
+\textbf{No.} & \textbf{Fullname} & \textbf{Student ID} & \textbf{Problems} & \textbf{\% done}\\
+\hline
+%%%%%Student 1%%%%%%%%%%
+1 & Phùng Gia Huy & 2352406 & \makecell[l]{- Hardware Integration \\ - IoT Gateway Implementation} & 100\%\\
+\hline
+%%%%%Student 2%%%%%%%%%%%
+2 & Đặng Quốc Khánh & 2352515 & \makecell[l]{- Database Design \\ - Backend Development} & 100\%\\
+\hline
+%%%%%Student 3%%%%%%%%%%%
+3 & Ngô Xuân Kiên & 2352642 & \makecell[l]{- Hardware Integration \\ - Embedded Systems} & 100\%\\
+\hline
+%%%%%Student 4%%%%%%%%%%%
+4 & Trần Ngọc Thoại & 2353147 & \makecell[l]{- Artificial Intelligence (AI) \\ - Frontend Development} & 100\%\\
+\hline
+\end{tabular}
+\caption{\label{table1}Member list \& workload}
+\end{table}
+\end{center}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%% noi dung
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\pagebreak
+\setlength{\parindent}{0pt}
+
+%===========================================
+% SECTION 1: SYSTEM OVERVIEW
+%===========================================
+\section{System Overview}
+
+\subsection{System Description}
+The \textbf{Smart Toll Gate System} is an intelligent vehicle access control solution designed for residential areas and apartment complexes. The system integrates IoT devices, Artificial Intelligence, and modern web technologies to automate the process of identifying vehicles and controlling gate barriers.
+
+\noindent \textbf{Key Features:}
+\begin{itemize}
+    \item \textbf{Automatic License Plate Recognition:} Uses AI-powered camera system to detect and recognize vehicle license plates in real-time.
+    \item \textbf{Intelligent Access Control:} Automatically opens barriers for registered vehicles and alerts security guards for unknown vehicles.
+    \item \textbf{Guest Management:} Allows residents to pre-register guests or generate OTP codes for unexpected visitors.
+    \item \textbf{Real-time Monitoring:} Provides security guards with a dashboard to monitor all gate activities and perform manual overrides when needed.
+    \item \textbf{Comprehensive Logging:} Records all access events with timestamps, images, and AI confidence scores for audit purposes.
+\end{itemize}
+
+\subsection{System Context Diagram}
+The following diagram illustrates the Smart Toll Gate System in its real-world context, showing the interactions between the system and external entities (actors).
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{image/system_context.png}
+    \caption{System Context Diagram - Smart Toll Gate System in Real-World Context}
+    \label{fig:system-context}
+\end{figure}
+
+\noindent \textbf{External Entities:}
+\begin{itemize}
+    \item \textbf{Resident Vehicles:} Cars and motorcycles owned by residents that need automatic access.
+    \item \textbf{Guest Vehicles:} Visitors' vehicles that require pre-registration or OTP verification.
+    \item \textbf{Citizens (Residents):} House owners who register vehicles, manage guests, and generate OTP codes.
+    \item \textbf{Security Guards:} Personnel who monitor the dashboard and perform manual verifications.
+    \item \textbf{Managers:} Administrators who approve registrations and view analytics.
+    \item \textbf{IP Camera:} Hardware device that captures vehicle images at the gate, which also reads ePass-style QR codes directly via software libraries.
+    \item \textbf{QR Scanner:} 1-way physical scanner placed at a low level for residents (pedestrians/cyclists) to scan their personal dynamic QR code via the Mobile App, sending data to the Backend via HTTP POST.
+    \item \textbf{Arduino + Servo Motor:} Hardware that physically controls the gate barrier.
+\end{itemize}
+
+\newpage
+\subsection{Overall Architecture}
+The system follows a \textbf{Three-Tier Architecture} with additional IoT and AI components. The architecture separates concerns into distinct layers for maintainability and scalability.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\textwidth]{image/overall_architecture.png}
+    \caption{Overall System Architecture}
+    \label{fig:overall-architecture}
+\end{figure}
+
+\noindent \textbf{Architecture Components:}
+\begin{itemize}
+    \item \textbf{Presentation Layer:} React.js web application with Material UI for citizen, guard, and manager dashboards.
+    \item \textbf{Application Layer:} Node.js/Express backend server handling business logic, authentication, and API endpoints.
+    \item \textbf{Data Layer:} PostgreSQL database storing users, vehicles, access logs, and images.
+    \item \textbf{AI Service:} Python-based service using YOLOv8 for plate detection and PaddleOCR for text extraction, along with QR scanning libraries for reading ePass on windshields.
+    \item \textbf{IoT Gateway:} Python application bridging the backend with Arduino hardware for gate control.
+    \item \textbf{Hardware Layer:} Arduino, servo motor, IR sensors, IP camera, and a separate Hardware QR Scanner used exclusively for pedestrians/cyclists to read personal dynamic QR codes from their smartphones.
+\end{itemize}
+
+\newpage
+%===========================================
+% SECTION 2: OVERALL PROJECT REQUIREMENTS
+%===========================================
+\section{Overall Project Requirements}
+
+\subsection{Project Scope}
+The Smart Toll Gate System project encompasses the following scope:
+\begin{itemize}
+    \item Development of a complete vehicle access control system for residential areas.
+    \item Integration of AI-based license plate recognition with IoT hardware control.
+    \item Implementation of role-based web dashboards for different user types.
+    \item Design and implementation of a relational database for data persistence.
+    \item Development of at least 5 functional modules as specified below.
+\end{itemize}
+
+\subsection{System Modules}
+The project is divided into the following \textbf{6 main modules}:
+
+\begin{longtable}{@{}
+    >{\centering\arraybackslash}p{0.08\textwidth}
+    >{\raggedright\arraybackslash}p{0.25\textwidth}
+    p{0.60\textwidth} @{}}
+
+    \caption{System Modules}
+    \label{tab:system_modules} \\
+
+    \toprule
+    \textbf{No.} & \textbf{Module Name} & \textbf{Description} \\
+    \midrule
+    \endfirsthead
+
+    \caption[]{... (continued)} \\
+    \toprule
+    \textbf{No.} & \textbf{Module Name} & \textbf{Description} \\
+    \midrule
+    \endhead
+
+    \bottomrule
+    \endlastfoot
+
+    1 & AI Recognition Module & Implements YOLOv8 for license plate detection and PaddleOCR for text extraction. Provides REST API for image processing. \\
+    \addlinespace
+    2 & IoT Gateway Module & Python application that communicates with Arduino via serial port, captures images from IP camera, and coordinates with backend API. \\
+    \addlinespace
+    3 & Backend API Module & Node.js/Express server handling authentication, vehicle verification, access logging, and communication with all other modules. \\
+    \addlinespace
+    4 & Frontend Dashboard Module & React.js web application with role-based interfaces for citizens, security guards, and managers. \\
+    \addlinespace
+    5 & Database Module & PostgreSQL database design and implementation including schema, indexes, stored procedures, and data integrity constraints. \\
+    \addlinespace
+    6 & Hardware Control Module & Arduino firmware for reading IR sensors, controlling servo motor, and serial communication with IoT Gateway. \\
+\end{longtable}
+
+\subsection{Technology Stack}
+\begin{longtable}{@{}
+    >{\raggedright\arraybackslash}p{0.20\textwidth}
+    >{\raggedright\arraybackslash}p{0.25\textwidth}
+    p{0.50\textwidth} @{}}
+
+    \caption{Technology Stack}
+    \label{tab:tech_stack} \\
+
+    \toprule
+    \textbf{Layer} & \textbf{Technology} & \textbf{Purpose} \\
+    \midrule
+    \endfirsthead
+
+    \caption[]{... (continued)} \\
+    \toprule
+    \textbf{Layer} & \textbf{Technology} & \textbf{Purpose} \\
+    \midrule
+    \endhead
+
+    \bottomrule
+    \endlastfoot
+
+    Frontend & React.js + Vite + Tailwind CSS & Building responsive, role-based user interfaces \\
+    \addlinespace
+    Backend & Node.js + Express.js & RESTful API server with JWT authentication \\
+    \addlinespace
+    Database & PostgreSQL & Relational database for persistent storage \\
+    \addlinespace
+    AI Service & Python + YOLOv8 + PaddleOCR & License plate detection and text recognition \\
+    \addlinespace
+    IoT Gateway & Python + python-socketio + OpenCV + PySerial & Bridge between backend and hardware via WebSocket \\
+    \addlinespace
+    Hardware & Arduino + Servo Motor & Physical gate barrier control \\
+    \addlinespace
+    Communication & HTTP/REST + WebSocket (Socket.IO) + Serial & Inter-module communication protocols \\
+\end{longtable}
+
+\subsubsection{Hardware Components}
+
+\noindent \textbf{MCU (Microcontroller Unit):} Arduino Uno R3 - controls barrier, lights, and buzzer.
+
+\noindent \textbf{Sensors/Actuators:}
+\begin{itemize}
+    \item \textbf{Servo MG90S:} Simulates barrier gate mechanism.
+    \item \textbf{Camera:} Captures license plate images as input.
+    \item \textbf{LCD1602:} Displays notifications and status at the gate.
+    \item \textbf{Ultrasonic Sensor HC-SR04:} Detects approaching vehicles.
+\end{itemize}
+
+\noindent \textbf{Input/Output Classification:}
+\begin{longtable}{@{}
+    >{\centering\arraybackslash}p{0.15\textwidth}
+    >{\raggedright\arraybackslash}p{0.30\textwidth}
+    p{0.45\textwidth} @{}}
+
+    \caption{Hardware Input/Output Components}
+    \label{tab:hardware_io} \\
+
+    \toprule
+    \textbf{Type} & \textbf{Component} & \textbf{Function} \\
+    \midrule
+    \endfirsthead
+
+    \bottomrule
+    \endlastfoot
+
+    Input & Camera & Captures license plate images \\
+    \addlinespace
+    Input & Ultrasonic Sensor HC-SR04 & Detects vehicle presence and proximity \\
+    \addlinespace
+    Output & Servo MG90S (Barrier) & Controls barrier open/close mechanism \\
+    \addlinespace
+    Output & LCD1602 & Displays information (plate number, status) \\
+\end{longtable}
+
+\noindent \textbf{Component List:}
+\begin{longtable}{@{}
+    >{\centering\arraybackslash}p{0.08\textwidth}
+    >{\raggedright\arraybackslash}p{0.30\textwidth}
+    >{\centering\arraybackslash}p{0.15\textwidth}
+    p{0.40\textwidth} @{}}
+
+    \caption{Hardware Component List}
+    \label{tab:hardware_components} \\
+
+    \toprule
+    \textbf{No.} & \textbf{Component} & \textbf{Quantity} & \textbf{Description} \\
+    \midrule
+    \endfirsthead
+
+    \bottomrule
+    \endlastfoot
+
+    1 & Arduino Uno R3 & 1 & Main microcontroller board \\
+    \addlinespace
+    2 & Servo MG90S & 1 & Micro servo motor for barrier control \\
+    \addlinespace
+    3 & LCD1602 & 1 & 16x2 character LCD display \\
+    \addlinespace
+    4 & Ultrasonic Sensor HC-SR04 & 1 & Distance sensing for vehicle detection \\
+\end{longtable}
+
+\subsubsection{Technology Comparison}
+
+\noindent \textbf{1/ AI/IoT Programming Language Comparison}
+
+For the AI Recognition Module and IoT Gateway, we compared several programming languages:
+
+\begin{longtable}{@{}
+    >{\raggedright\arraybackslash}p{0.15\textwidth}
+    >{\raggedright\arraybackslash}p{0.35\textwidth}
+    >{\raggedright\arraybackslash}p{0.35\textwidth} @{}}
+
+    \caption{AI/IoT Programming Language Comparison}
+    \label{tab:ai_lang_comparison} \\
+
+    \toprule
+    \textbf{Language} & \textbf{Advantages} & \textbf{Disadvantages} \\
+    \midrule
+    \endfirsthead
+
+    \bottomrule
+    \endlastfoot
+
+    \textbf{Python} & 
+    \begin{itemize}[leftmargin=*, nosep, topsep=0pt]
+        \item Extensive AI/ML libraries (TensorFlow, PyTorch, YOLOv8)
+        \item Easy to integrate with OpenCV for image processing
+        \item Simple syntax, rapid development
+        \item Strong community support for IoT
+    \end{itemize} & 
+    \begin{itemize}[leftmargin=*, nosep, topsep=0pt]
+        \item Slower execution compared to compiled languages
+        \item Higher memory consumption
+    \end{itemize} \\
+    \addlinespace
+    \midrule
+    \addlinespace
+    C++ & 
+    \begin{itemize}[leftmargin=*, nosep, topsep=0pt]
+        \item Very fast execution speed
+        \item Low memory footprint
+        \item Direct hardware access
+    \end{itemize} & 
+    \begin{itemize}[leftmargin=*, nosep, topsep=0pt]
+        \item Complex syntax, longer development time
+        \item Limited AI/ML library ecosystem
+        \item Manual memory management
+    \end{itemize} \\
+    \addlinespace
+    \midrule
+    \addlinespace
+    Java & 
+    \begin{itemize}[leftmargin=*, nosep, topsep=0pt]
+        \item Platform independent (JVM)
+        \item Good for enterprise applications
+        \item Strong type system
+    \end{itemize} & 
+    \begin{itemize}[leftmargin=*, nosep, topsep=0pt]
+        \item Limited AI/ML support compared to Python
+        \item Verbose syntax
+        \item Higher resource consumption
+    \end{itemize} \\
+\end{longtable}
+
+\noindent \textbf{Conclusion:} We selected \textbf{Python} for the AI and IoT modules due to its extensive machine learning libraries (YOLOv8, PaddleOCR), easy integration with OpenCV for image processing, and rapid development capabilities essential for prototyping IoT applications.
+
+\vspace{0.5cm}
+\noindent \textbf{2/ Frontend Framework Comparison}
+
+For the Frontend Dashboard Module, we compared popular JavaScript frameworks:
+
+\begin{longtable}{@{}
+    >{\raggedright\arraybackslash}p{0.15\textwidth}
+    >{\raggedright\arraybackslash}p{0.35\textwidth}
+    >{\raggedright\arraybackslash}p{0.35\textwidth} @{}}
+
+    \caption{Frontend Framework Comparison}
+    \label{tab:frontend_comparison} \\
+
+    \toprule
+    \textbf{Framework} & \textbf{Advantages} & \textbf{Disadvantages} \\
+    \midrule
+    \endfirsthead
+
+    \bottomrule
+    \endlastfoot
+
+    \textbf{React.js} & 
+    \begin{itemize}[leftmargin=*, nosep, topsep=0pt]
+        \item Component-based architecture
+        \item Large ecosystem (Material UI, Redux)
+        \item Virtual DOM for performance
+        \item Strong community and job market
+    \end{itemize} & 
+    \begin{itemize}[leftmargin=*, nosep, topsep=0pt]
+        \item Requires additional libraries for routing/state
+        \item JSX learning curve
+    \end{itemize} \\
+    \addlinespace
+    \midrule
+    \addlinespace
+    Angular & 
+    \begin{itemize}[leftmargin=*, nosep, topsep=0pt]
+        \item Full-featured MVC framework
+        \item Built-in routing and forms
+        \item TypeScript by default
+    \end{itemize} & 
+    \begin{itemize}[leftmargin=*, nosep, topsep=0pt]
+        \item Steep learning curve
+        \item Heavier bundle size
+        \item More opinionated structure
+    \end{itemize} \\
+    \addlinespace
+    \midrule
+    \addlinespace
+    Vue.js & 
+    \begin{itemize}[leftmargin=*, nosep, topsep=0pt]
+        \item Easy to learn
+        \item Lightweight and fast
+        \item Good documentation
+    \end{itemize} & 
+    \begin{itemize}[leftmargin=*, nosep, topsep=0pt]
+        \item Smaller ecosystem
+        \item Less enterprise adoption
+        \item Fewer job opportunities
+    \end{itemize} \\
+\end{longtable}
+
+\noindent \textbf{Conclusion:} We selected \textbf{React.js} for the frontend because of its component-based architecture that supports reusable UI elements, extensive ecosystem with Material UI for professional styling, and strong community support. React's flexibility allows us to easily implement role-based dashboards for citizens, guards, and managers.
+
+\vspace{0.5cm}
+\noindent \textbf{3/ Backend Framework Comparison}
+
+For the Backend API Module, we compared popular server-side technologies:
+
+\begin{longtable}{@{}
+    >{\raggedright\arraybackslash}p{0.15\textwidth}
+    >{\raggedright\arraybackslash}p{0.35\textwidth}
+    >{\raggedright\arraybackslash}p{0.35\textwidth} @{}}
+
+    \caption{Backend Framework Comparison}
+    \label{tab:backend_comparison} \\
+
+    \toprule
+    \textbf{Technology} & \textbf{Advantages} & \textbf{Disadvantages} \\
+    \midrule
+    \endfirsthead
+
+    \bottomrule
+    \endlastfoot
+
+    \textbf{Node.js + Express} & 
+    \begin{itemize}[leftmargin=*, nosep, topsep=0pt]
+        \item Non-blocking, event-driven architecture
+        \item Same language (JavaScript) as frontend
+        \item Excellent for real-time applications
+        \item Large npm ecosystem
+        \item Fast development cycle
+    \end{itemize} & 
+    \begin{itemize}[leftmargin=*, nosep, topsep=0pt]
+        \item Single-threaded (CPU-intensive tasks)
+        \item Callback complexity (mitigated by async/await)
+    \end{itemize} \\
+    \addlinespace
+    \midrule
+    \addlinespace
+    Python + Django & 
+    \begin{itemize}[leftmargin=*, nosep, topsep=0pt]
+        \item Batteries-included framework
+        \item Built-in admin interface
+        \item Strong ORM support
+        \item Good for rapid prototyping
+    \end{itemize} & 
+    \begin{itemize}[leftmargin=*, nosep, topsep=0pt]
+        \item Slower than Node.js for I/O operations
+        \item Monolithic architecture
+        \item Steeper learning curve for Django
+    \end{itemize} \\
+    \addlinespace
+    \midrule
+    \addlinespace
+    Java + Spring Boot & 
+    \begin{itemize}[leftmargin=*, nosep, topsep=0pt]
+        \item Enterprise-grade stability
+        \item Strong type safety
+        \item Excellent for large-scale systems
+        \item Comprehensive security features
+    \end{itemize} & 
+    \begin{itemize}[leftmargin=*, nosep, topsep=0pt]
+        \item Verbose boilerplate code
+        \item Slower development speed
+        \item Higher memory consumption
+        \item Complex configuration
+    \end{itemize} \\
+    \addlinespace
+    \midrule
+    \addlinespace
+    PHP + Laravel & 
+    \begin{itemize}[leftmargin=*, nosep, topsep=0pt]
+        \item Easy to learn and deploy
+        \item Good hosting support
+        \item Elegant syntax
+    \end{itemize} & 
+    \begin{itemize}[leftmargin=*, nosep, topsep=0pt]
+        \item Performance limitations
+        \item Less suitable for real-time apps
+        \item Inconsistent core functions
+    \end{itemize} \\
+\end{longtable}
+
+\noindent \textbf{Conclusion:} We selected \textbf{Node.js with Express.js} for the backend because of its:
+\begin{itemize}[leftmargin=*, nosep, topsep=0pt]
+    \item \textbf{Unified JavaScript Stack:} Using JavaScript for both frontend (React.js) and backend simplifies development, reduces context switching, and allows code sharing.
+    \item \textbf{Event-Driven Architecture:} Perfect for handling multiple concurrent connections from IoT devices, mobile apps, and web dashboards simultaneously.
+    \item \textbf{Real-Time Capabilities:} Native support for WebSocket and real-time event streaming, essential for live gate status updates and notifications.
+    \item \textbf{Lightweight and Fast:} Ideal for RESTful API development with minimal overhead, resulting in quick response times for vehicle verification.
+    \item \textbf{Rich Ecosystem:} NPM provides packages like JWT for authentication, bcrypt for password hashing, and node-postgres for database connectivity.
+\end{itemize}
+
+\subsection{Role-Based Access Control (RBAC)}
+The system implements Role-Based Access Control to ensure proper authorization for different user types. Each role has specific permissions and access to different features.
+
+\begin{longtable}{@{}
+    >{\raggedright\arraybackslash}p{0.30\textwidth}
+    >{\centering\arraybackslash}p{0.20\textwidth}
+    >{\centering\arraybackslash}p{0.20\textwidth}
+    >{\centering\arraybackslash}p{0.20\textwidth} @{}}
+
+    \caption{Role-Based Access Control (RBAC) Matrix}
+    \label{tab:rbac_matrix} \\
+
+    \toprule
+    \textbf{Feature / Permission} & \textbf{Manager} & \textbf{Security Guard} & \textbf{Citizen} \\
+    \midrule
+    \endfirsthead
+
+    \caption[]{Role-Based Access Control (RBAC) Matrix (continued)} \\
+    \toprule
+    \textbf{Feature / Permission} & \textbf{Manager} & \textbf{Security Guard} & \textbf{Citizen} \\
+    \midrule
+    \endhead
+
+    \bottomrule
+    \endlastfoot
+
+    View Analytics Dashboard & \cmark (Full) & \xmark & \xmark \\
+    \addlinespace
+    View Real-time Access Events & \cmark (Read-only) & \cmark (Full) & \xmark \\
+    \addlinespace
+    Manual Gate Control & \cmark (Remote) & \cmark (Full) & \xmark \\
+    \addlinespace
+    Vehicle Management & \cmark (All users) & \xmark & \cmark (Own) \\
+    \addlinespace
+    Guest Registration & \xmark & \xmark & \cmark (Full) \\
+    \addlinespace
+    Generate OTP Codes & \xmark & \xmark & \cmark (Own guests) \\
+    \addlinespace
+    Verify OTP Codes & \xmark & \cmark (Full) & \xmark \\
+    \addlinespace
+    User Management & \cmark (Full) & \xmark & \xmark \\
+    \addlinespace
+    View Access Logs & \cmark (All) & \cmark (Own gate) & \cmark (Own vehicles) \\
+    \addlinespace
+    System Settings & \cmark (Full) & \xmark & \xmark \\
+    \addlinespace
+    Approve Vehicle Registration & \cmark (Full) & \xmark & \xmark \\
+\end{longtable}
+
+\newpage
+%===========================================
+% SECTION 3: BUSINESS REQUIREMENTS
+%===========================================
+\section{Business Requirements}
+
+\subsection{Business Context}
+Modern residential areas and apartment complexes face several challenges:
+\begin{itemize}
+    \item \textbf{High Labor Cost:} Need security guards to work 24/7 at each gate.
+    \item \textbf{Slow Manual Verification:} Causes traffic jams during rush hours.
+    \item \textbf{Lack of Transparency:} No evidence or history of vehicles entering or leaving.
+    \item \textbf{Difficult Guest Management:} Cannot control unknown vehicles properly.
+\end{itemize}
+
+\subsection{Business Goals}
+\begin{longtable}{@{}
+    >{\raggedright\arraybackslash}p{0.10\textwidth}
+    p{0.50\textwidth}
+    >{\raggedright\arraybackslash}p{0.30\textwidth} @{}}
+
+    \caption{Business Goals}
+    \label{tab:business_goals} \\
+
+    \toprule
+    \textbf{ID} & \textbf{Business Goal} & \textbf{Success Metric} \\
+    \midrule
+    \endfirsthead
+
+    \caption[]{... (continued)} \\
+    \toprule
+    \textbf{ID} & \textbf{Business Goal} & \textbf{Success Metric} \\
+    \midrule
+    \endhead
+
+    \bottomrule
+    \endlastfoot
+
+    BG-01 & Reduce average check-in time & Less than 3 seconds per vehicle (with AI) \\
+    \addlinespace
+    BG-02 & Optimize operational costs & Reduce 50\% security staff needed \\
+    \addlinespace
+    BG-03 & Improve area security & 100\% log entries with image evidence \\
+    \addlinespace
+    BG-04 & Improve resident experience & Satisfaction rate greater than 90\% \\
+    \addlinespace
+    BG-05 & Data-driven decision making & Real-time analytics dashboard \\
+\end{longtable}
+
+\subsection{Business Scenarios}
+\begin{tcolorbox}[colback=white!95!gray, colframe=black, title=Scenario 1: Happy Path (Fully Automated Flow \& Anti-spoofing)]
+\begin{itemize}
+    \item[\textbf{Step 1:}] \textbf{Scan Permanent Whitelist (vehicles table)}
+    \begin{itemize}
+        \item The Backend prioritizes checking if this is a resident's vehicle. It queries the Database for a vehicle where \texttt{license\_plate = AI\_plate} and \texttt{is\_active = true}.
+        \item If NOT FOUND: The vehicle does not belong to a resident $\rightarrow$ Immediately move to \textbf{Step 2}.
+        \item If FOUND: The system starts the 2-layer security check:
+        \begin{itemize}
+            \item \textbf{QR Anti-Spoofing Check:} Does the \texttt{qr\_tag\_text} sent by the AI match the \texttt{vehicle\_qr\_tag} in the Database? (If the AI sends null or a mismatched string $\rightarrow$ Block immediately, issue a `Suspected fake vehicle'' red alert).
+            \item \textbf{Anti-Passback Check:} The system verifies the vehicle's direction (inbound) against its state in the database. If it is already \texttt{inside} $\rightarrow$ Logic error $\rightarrow$ Block immediately, alert `Vehicle already inside''.
+        \end{itemize}
+        \item \textbf{Approval:} If all security tests pass $\rightarrow$ Change \texttt{location\_status} to \texttt{inside} $\rightarrow$ Save log $\rightarrow$ Open the gate. Flow ends.
+    \end{itemize}
+
+    \item[\textbf{Step 2:}] \textbf{Scan Temporary Whitelist (guest\_registrations table)}
+    \begin{itemize}
+        \item If the vehicle fails Step 1 (not in the \texttt{vehicles} table), the Backend automatically searches the pre-registered guest list.
+        \item It queries the Database for \texttt{guest\_license\_plate = AI\_plate} and \texttt{status = 'approved'}.
+        \item \textbf{Time Window Validation:} The system compares the current time against the guest's allowed window (\texttt{visit\_start\_time} $\le$ current time $\le$ \texttt{visit\_end\_time}).
+        \item If FOUND and VALID TIME: This is an authorized guest $\rightarrow$ Save log (storing guest ID) $\rightarrow$ Open the gate. Flow ends.
+        \item If NOT FOUND or OUTSIDE TIME WINDOW: The guest is using the wrong vehicle, arrived too early, or the permit expired $\rightarrow$ Access denied. Move to \textbf{Step 3}.
+    \end{itemize}
+
+    \item[\textbf{Step 3:}] \textbf{Fallback (Deny \& Redirect)}
+    \begin{itemize}
+        \item If the vehicle fails both Step 1 and Step 2:
+        \item The Backend logs \texttt{is\_access\_granted = false} (Access denied) and sends a \texttt{KEEP\_CLOSED} command to the IoT Gateway.
+        \item A real-time notification is pushed to the Security Guard dashboard: `Invalid vehicle. Please handle!''
+        \item The guest must now switch to Scenario 3: Call the resident to obtain a 6-digit OTP and read it to the Guard.
+    \end{itemize}
+\end{itemize}
+\end{tcolorbox}
+
+\begin{tcolorbox}[colback=white!95!gray, colframe=black, title=Scenario 2: Manual Override (Remote Human Intervention)]
+\begin{enumerate}
+    \item This flow is used for special cases that require visual confirmation by the Security Guard or Manager.
+    \item Priority vehicles (ambulances, fire trucks, police) or exceptional cases enter the lane.
+    \item The Security Guard or Manager monitors the live camera feed on their respective dashboard.
+    \item The Guard or Manager clicks the Emergency Gate Open button on their web interface to remotely open the gate.
+    \item The system requires the operator to select a reason (e.g., emergency\_vehicle, system\_maintenance).
+    \item The backend stores the action log together with the operator ID and sends the gate-open command.
+\end{enumerate}
+\end{tcolorbox}
+
+\begin{tcolorbox}[colback=white!95!gray, colframe=black, title=Scenario 3: Multi-step Exceptions (OTP-based Guest Access)]
+\begin{enumerate}
+    \item This flow is designed for unexpected guests (walk-ins) or delivery drivers.
+    \item The guest arrives at the gate and is blocked because they are not registered.
+    \item The guest calls the resident to inform them of their arrival.
+    \item The resident uses the mobile app to register the guest and generate a new OTP.
+    \item The generated OTP is sent to the resident AND instantly displayed on the Security Guard's dashboard monitor.
+    \item The resident communicates the OTP to the guest via phone call or message.
+    \item The guest reads the OTP to the Security Guard.
+    \item The Guard verifies the OTP matching on their screen and triggers the gate opening.
+\end{enumerate}
+\end{tcolorbox}
+
+\vspace{1em}
+\begin{tcolorbox}[colback=white!95!gray, colframe=black, title=Scenario 4: Pedestrian/Bicycle Access (QR-based)]
+\begin{enumerate}
+    \item A resident goes for a walk or rides a bicycle, which does not have a license plate for AI recognition.
+    \item The resident opens the Mobile App and generates a personal dynamic QR code (containing a UUID, valid for 3 minutes).
+    \item The resident places their smartphone against the Hardware QR Scanner located at a lower level at the gate.
+    \item The scanner sends the UUID string to the Backend via HTTP POST. The Backend retrieves the resident's data and verifies it $\rightarrow$ Opens the gate.
+\end{enumerate}
+\end{tcolorbox}
+
+\newpage
+%===========================================
+% SECTION 4: SYSTEM REQUIREMENTS
+%===========================================
+\section{System Requirements}
+
+\subsection{Functional Requirements}
+\begin{longtable}{@{}
+    >{\raggedright\arraybackslash}p{0.10\textwidth}
+    p{0.55\textwidth}
+    >{\centering\arraybackslash}p{0.09\textwidth}
+    >{\centering\arraybackslash}p{0.09\textwidth}
+    >{\raggedright\arraybackslash}p{0.11\textwidth} @{}}
+
+    \caption{Functional Requirements}
+    \label{tab:functional_requirements} \\
+
+    \toprule
+    \textbf{ID} & \textbf{Requirement} & \textbf{Feasible} & \textbf{Testable} & \textbf{Important} \\
+    \midrule
+    \endfirsthead
+
+    \caption[]{... (continued)} \\
+    \toprule
+    \textbf{ID} & \textbf{Requirement} & \textbf{Feasible} & \textbf{Testable} & \textbf{Important} \\
+    \midrule
+    \endhead
+
+    \bottomrule
+    \endlastfoot
+
+    FR-01 & The system shall process AI recognition (YOLOv8 + OCR) to detect and read vehicle license plates. & \cmark & \cmark & High \\
+    \addlinespace
+    FR-02 & The system shall check vehicle access permission by comparing license plate against whitelist tables. & \cmark & \cmark & High \\
+    \addlinespace 
+    FR-03 & The system shall communicate with IoT Gateway using HTTP to send OPEN or KEEP\_CLOSED commands. & \cmark & \cmark & High \\
+    \addlinespace
+    FR-04 & The system shall store all images (snapshot and cropped plate) as binary data (BYTEA) in database. & \cmark & \cmark & High \\
+    \addlinespace
+    FR-05 & The system shall allow citizens to manage their personal vehicles (view, add new vehicles). & \cmark & \cmark & High \\
+    \addlinespace
+    FR-06 & The system shall allow citizens to register guests in advance with scheduled visit time. & \cmark & \cmark & High \\
+    \addlinespace
+    FR-07 & The system shall allow citizens to create emergency OTP codes (6 digits, valid for 15 minutes). & \cmark & \cmark & High \\
+    \addlinespace
+    FR-08 & The system shall allow security guards to monitor gate activities in real-time through dashboard. & \cmark & \cmark & High \\
+    \addlinespace
+    FR-09 & The system shall allow security guards to submit AI correction feedback when a plate is misrecognized, to improve recognition accuracy over time. & \cmark & \cmark & Medium \\
+\end{longtable}
+
+\subsection{Non-Functional Requirements}
+
+\begin{longtable}{@{}
+    >{\raggedright\arraybackslash}p{0.10\textwidth}
+    p{0.55\textwidth}
+    >{\centering\arraybackslash}p{0.09\textwidth}
+    >{\centering\arraybackslash}p{0.09\textwidth}
+    >{\raggedright\arraybackslash}p{0.11\textwidth} @{}}
+
+    \caption{Non-Functional Requirements}
+    \label{tab:nonfunctional_requirements} \\
+
+    \toprule
+    \textbf{ID} & \textbf{Requirement} & \textbf{Feasible} & \textbf{Testable} & \textbf{Important} \\
+    \midrule
+    \endfirsthead
+
+    \caption[]{... (continued)} \\
+    \toprule
+    \textbf{ID} & \textbf{Requirement} & \textbf{Feasible} & \textbf{Testable} & \textbf{Important} \\
+    \midrule
+    \endhead
+
+    \bottomrule
+    \endlastfoot
+
+    NFR-01 & The AI recognition shall complete within 1000 milliseconds end-to-end latency. & \cmark & \cmark & High \\
+    \addlinespace
+    NFR-02 & The API response time shall be less than 200 milliseconds at 95th percentile. & \cmark & \cmark & High \\
+    \addlinespace
+    NFR-03 & The database query time shall be less than 100 milliseconds for complex queries. & \cmark & \cmark & High \\
+    \addlinespace
+    NFR-04 & The system shall support more than 100 concurrent users simultaneously. & \cmark & \cmark & High \\
+    \addlinespace
+    NFR-05 & The maximum image upload size shall be 10 megabytes per request. & \cmark & \cmark & Medium \\
+    \addlinespace 
+    NFR-06 & The system shall use JWT authentication with 7-day expiry for security. & \cmark & \cmark & High \\
+    \addlinespace
+    NFR-07 & The system shall store passwords using bcrypt with salt rounds equal to 10. & \cmark & \cmark & High \\
+    \addlinespace
+    NFR-08 & The system shall implement Role-Based Access Control with three roles: citizen, guard, manager. & \cmark & \cmark & High \\
+    \addlinespace
+    NFR-09 & The system shall maintain 99.5\% uptime availability during operation hours. & \cmark & \cmark & Medium \\
+    \addlinespace
+    NFR-10 & The OTP codes shall be 6 digits, unique, and expire after 15 minutes. & \cmark & \cmark & High \\
+\end{longtable}
+
+\subsection{Data Requirements}
+
+\begin{itemize}
+    \item \textbf{User Data:} Stores credentials, profile information, and roles (Resident, Guard, Admin) for system access control.
+    
+    \item \textbf{Vehicle Data:} Records license plate numbers, vehicle types, and digital copies/images of registration documents for verification.
+    
+    \item \textbf{Access Control Lists:} Maintains a "Whitelist" for permanent residents and a "Temporary Whitelist" for pre-registered guests with specific expiration timestamps.
+    
+    \item \textbf{Authentication Tokens:} Stores short-lived OTP codes (5-minute validity) and digital QR codes for manual or non-motorized entry.
+    
+    \item \textbf{Activity Logs:} Detailed records of every entry/exit event, including timestamps, captured plate images, entry methods, and the specific actor involved.
+    
+    \item \textbf{AI Metadata:} Stores confidence scores of plate recognition and high-dimensional vectors for advanced image similarity searches.
+    
+    \item \textbf{System Audit Trails:} Logs of manual overrides by security guards, including the mandatory justification/reason for opening the barrier.
+    
+    \item \textbf{Multimedia Storage:} Management of raw image inputs from cameras used for both real-time AI processing and historical security evidence.
+\end{itemize}
+
+\newpage
+\subsection{Use Case Descriptions}
+
+\noindent \textbf{1/ UC-01: Manage Personal Vehicles}
+
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.2}
+\setlength{\ucLeft}{30mm}
+
+\begin{longtable}{|>{\bfseries}p{\ucLeft}|
+                p{\dimexpr\textwidth-\ucLeft-4\tabcolsep-3\arrayrulewidth\relax}|}
+\hline
+Name & Manage Personal Vehicles \\ \hline
+ID & UC-01 \\ \hline
+Actor & Primary: Citizen\\ \hline
+Description & Citizen views and adds vehicles to personal whitelist for automatic gate access.\\ \hline
+Preconditions &
+\begin{itemize}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt]
+    \item Citizen has logged in to the system
+    \item Citizen has valid account associated with a house
+\end{itemize}
+\\ \hline
+Postconditions &
+\begin{itemize}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt, after=\strut]
+    \item \textbf{Success:} New vehicle is added to system with is\_active = false (waiting for approval).
+    \item \textbf{Failure:} Error message displayed, vehicle not added.
+\end{itemize}
+\\ \hline
+Basic Flow & 
+\begin{enumerate}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt]
+    \item Citizen opens the My Vehicles page
+    \item System displays list of current registered vehicles
+    \item Citizen selects Add New Vehicle
+    \item Citizen enters: License Plate, Vehicle Type, Color, Image (optional)
+    \item System validates license plate format and checks for duplicates
+    \item System saves vehicle with is\_active = false (pending approval)
+    \item System shows success message to Citizen
+\end{enumerate}
+\\ \hline
+Alternative Flow &
+\noindent \textbf{AF1: Invalid license plate format (at step 5)}
+\begin{enumerate}
+    \item System detects invalid license plate format
+    \item System shows error message and asks Citizen to re-enter
+\end{enumerate}
+\noindent \textbf{AF2: License plate already exists (at step 5)}
+\begin{enumerate}
+    \item System finds license plate already registered in database
+    \item System notifies Citizen that vehicle is already registered
+\end{enumerate}
+\\ \hline
+Exception Flow &
+\noindent \textbf{EF1: Database connection failure}
+\begin{enumerate}
+    \item System cannot connect to database
+    \item System logs error and displays friendly error message
+    \item Citizen asked to try again later
+\end{enumerate}
+\\ \hline
+\caption{UC\_01: Manage Personal Vehicles}\label{tab:uc01}
+\end{longtable}
+
+\newpage
+\noindent \textbf{2/ UC-02: Create Emergency OTP Code}
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.2}
+\setlength{\ucLeft}{30mm}
+
+\begin{longtable}{|>{\bfseries}p{\ucLeft}|
+                p{\dimexpr\textwidth-\ucLeft-4\tabcolsep-3\arrayrulewidth\relax}|}
+\hline
+Name & Create Emergency OTP Code \\ \hline
+ID & UC-02 \\ \hline
+Actor & Primary: Citizen \\ \hline
+Description & Citizen creates a 6-digit OTP code for unexpected guests (walk-ins) calling from the gate.\\ \hline
+Preconditions &
+\begin{itemize}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt]
+    \item Citizen has logged in to the system
+    \item Citizen has valid account associated with a house
+\end{itemize}
+\\ \hline
+Postconditions &
+\begin{itemize}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt, after=\strut]
+    \item \textbf{Success:} OTP code created with 15-minute validity period. OTP is displayed to Citizen and synced to Guard's monitor.
+    \item \textbf{Failure:} OTP not created, error message displayed.
+\end{itemize}
+\\ \hline
+Basic Flow & 
+\begin{enumerate}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt]
+    \item Guest arrives at gate and calls Citizen
+    \item Citizen selects Create OTP option on the app
+    \item System generates random 6-digit code (unique in active pool)
+    \item System saves OTP to access\_tokens with valid\_until = NOW() + 15 minutes
+    \item System displays OTP code on Citizen's app AND automatically synchronizes it to the Security Guard's monitor
+    \item Citizen reads or messages the OTP code to the guest
+\end{enumerate}
+\\ \hline
+Alternative Flow &
+\noindent \textbf{AF1: OTP collision (at step 2)}
+\begin{enumerate}
+    \item System generates code that already exists in active pool
+    \item System regenerates new unique code automatically
+    \item Flow continues normally
+\end{enumerate}
+\\ \hline
+Exception Flow &
+\noindent \textbf{EF1: Database connection failure}
+\begin{enumerate}
+    \item System cannot save OTP to database
+    \item System shows error message
+    \item Citizen asked to try again
+\end{enumerate}
+\\ \hline
+\caption{UC\_02: Create Emergency OTP Code}\label{tab:uc02}
+\end{longtable}
+
+\newpage
+\noindent \textbf{3/ UC-03: Guard Verify OTP and Manual Override}
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.2}
+\setlength{\ucLeft}{30mm}
+
+\begin{longtable}{|>{\bfseries}p{\ucLeft}|
+                p{\dimexpr\textwidth-\ucLeft-4\tabcolsep-3\arrayrulewidth\relax}|}
+\hline
+Name & Guard Verify OTP and Manual Override\\ \hline
+ID & UC-03 \\ \hline
+Actor & Primary: Security Guard, Manager \\ \hline
+Description & Security Guard verifies OTP codes from guests and performs manual override actions (open barrier or keep closed) with mandatory reason selection. Managers can also perform manual overrides remotely.\\ \hline
+Preconditions &
+\begin{itemize}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt]
+    \item Actor has logged in to system
+    \item Guard is assigned to a specific gate, Manager is managing the zone
+    \item Dashboard is displaying gate monitoring view
+\end{itemize}
+\\ \hline
+Postconditions &
+\begin{itemize}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt, after=\strut]
+    \item \textbf{Success:} OTP verified and consumed, barrier opens. Or manual action logged with reason, barrier state changed. Host information displayed for verification.
+    \item \textbf{Failure:} OTP invalid/expired/used, access denied. Error message shown.
+\end{itemize}
+\\ \hline
+Basic Flow & 
+\begin{enumerate}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt]
+    \item Guest reads the OTP code to the Security Guard (sent from Citizen)
+    \item Guard verifies the OTP against the synchronized code on their screen or enters it in Verify OTP field
+    \item System checks: OTP exists? Not used? Not expired?
+    \item If valid: System marks OTP as used and records used\_at timestamp
+    \item System logs access with access\_method = manual\_otp
+    \item System sends OPEN command to IoT Gateway
+    \item System displays host information (name, apartment number)
+    \item Barrier opens automatically
+\end{enumerate}
+\\ \hline
+Alternative Flow &
+\noindent \textbf{AF1: Manual Override - Open Barrier (at any time)}
+\begin{enumerate}
+    \item Guard or Manager selects Manual Action: Open Barrier on the dashboard
+    \item System requires Actor to select reason from list: emergency\_vehicle, vip\_guest, ai\_error, maintenance, other
+    \item If other selected, Actor must enter note
+    \item Actor confirms action
+    \item System logs action with access\_method = manual\_guard
+    \item System sends OPEN command to IoT Gateway
+\end{enumerate}
+\noindent \textbf{AF2: Manual Override - Keep Closed (at any time)}
+\begin{enumerate}
+    \item Guard or Manager selects Manual Action: Keep Closed
+    \item System requires Actor to select reason: shipper\_delivery, suspicious\_vehicle, unauthorized, other
+    \item Actor confirms action
+    \item System logs action with is\_access\_granted = false
+    \item Barrier remains closed
+\end{enumerate}
+\\ \hline
+Exception Flow &
+\noindent \textbf{EF1: OTP not found (at step 3)}
+\begin{enumerate}
+    \item System cannot find OTP in database
+    \item System displays: OTP code is invalid
+    \item Guard informs guest, access denied
+\end{enumerate}
+
+\noindent \textbf{EF2: OTP already used (at step 3)}
+\begin{enumerate}
+    \item System finds OTP but is\_used = true
+    \item System displays: OTP code has already been used
+    \item Guard informs guest to request new code
+\end{enumerate}
+
+\noindent \textbf{EF3: OTP expired (at step 3)}
+\begin{enumerate}
+    \item System finds OTP but valid\_until < current time
+    \item System displays: OTP code has expired
+    \item Guard informs guest to request new code from host
+\end{enumerate}
+\\ \hline
+\caption{UC\_03: Guard Verify OTP and Manual Override}\label{tab:uc03}
+\end{longtable}
+
+\newpage
+\noindent \textbf{4/ UC-04: AI-Powered Automatic Check-In}
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.2}
+\setlength{\ucLeft}{30mm}
+
+\begin{longtable}{|>{\bfseries}p{\ucLeft}|
+                p{\dimexpr\textwidth-\ucLeft-4\tabcolsep-3\arrayrulewidth\relax}|}
+\hline
+Name & AI-Powered Automatic Check-In \\ \hline
+ID & UC-04 \\ \hline
+Actor & Primary: System (IoT Gateway + AI Service) \\ \hline
+Description & When vehicle approaches gate, IoT Gateway captures license plate image using camera and sends to AI Service; AI Service uses YOLOv8 model to detect license plate region and applies OCR to extract plate number; System compares extracted plate with registered vehicles in database; If plate matches authorized vehicle, system automatically opens gate barrier; All access attempts are logged with timestamp, confidence score, and captured image for audit purposes \\ \hline
+Preconditions &
+\begin{itemize}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt]
+    \item Camera and IR sensor at gate are operational
+    \item IoT Gateway is running and connected to backend
+    \item AI Service with YOLOv8, OCR model, and QR scanning library is available
+    \item Separate QR Scanner for pedestrians is operational
+    \item Gate barrier hardware is functional
+    \item Vehicle database contains registered plates
+\end{itemize}
+\\ \hline
+Postconditions &
+\begin{itemize}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt, after=\strut]
+    \item \textbf{Success:} Vehicle plate recognized with high confidence and matches ePass QR data read from camera (for residents) or guest list. Gate opens automatically. System logs timestamp and toggles \texttt{is\_inside}.
+    \item \textbf{Failure:} Plate not recognized, ePass QR spoofing detected, or confidence too low. Gate remains closed. Guard alerted.
+\end{itemize}
+\\ \hline
+Basic Flow & 
+\begin{enumerate}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt]
+    \item Vehicle approaches gate and triggers IR proximity sensor
+    \item IoT Gateway detects sensor activation via Arduino serial communication
+    \item IoT Gateway sends command to capture image from IP camera
+    \item Camera captures high-resolution image of vehicle front (including license plate and ePass QR on windshield)
+    \item IoT Gateway sends captured image to AI Service via HTTP API
+    \item AI Service preprocesses image (resize, normalize, enhance contrast)
+    \item AI Service runs YOLOv8 model to detect license plate bounding box AND uses software library to scan the ePass QR code in the image
+    \item AI Service applies OCR (PaddleOCR) to extract text from plate
+    \item AI Service returns extracted plate number, confidence score, and extracted ePass QR data
+    \item IoT Gateway sends plate number and ePass QR data to Backend API for verification
+    \item Backend verifies the matched license plate and valid ePass QR code to confirm anti-spoofing
+    \item Backend checks logical flow based on \texttt{is\_inside} flag
+    \item Backend creates access\_log entry with access\_type = 'ai\_checkin'
+    \item Backend updates the \texttt{is\_inside} flag and stores the timestamp
+    \item Backend returns authorization response to IoT Gateway
+    \item IoT Gateway sends OPEN command to Arduino via serial port
+    \item Arduino activates servo motor to raise gate barrier
+    \item Vehicle passes through gate
+    \item IR sensor detects vehicle has passed
+    \item IoT Gateway sends CLOSE command to Arduino
+    \item Arduino lowers gate barrier
+\end{enumerate}
+\\ \hline
+Alternative Flow &
+\noindent \textbf{AF1: Guest with valid access token (at step 12)}
+\begin{enumerate}
+    \item Backend does not find plate in vehicles table
+    \item Backend queries guest\_registrations and access\_tokens tables
+    \item Backend finds valid guest registration with matching expected plate
+    \item Backend verifies access token is within valid\_from and valid\_until
+    \item Backend authorizes entry and logs as 'guest\_checkin'
+\end{enumerate}
+\noindent \textbf{AF2: Low confidence requires confirmation (at step 10)}
+\begin{enumerate}
+    \item AI Service returns confidence score below threshold (e.g., 85\%)
+    \item IoT Gateway still sends plate to Backend for lookup
+    \item If partial match found, system alerts guard screen for confirmation
+    \item Guard reviews captured image and confirms or rejects
+    \item Flow continues based on guard decision
+\end{enumerate}
+\noindent \textbf{AF3: Multiple plates detected (at step 7)}
+\begin{enumerate}
+    \item YOLOv8 detects multiple plate candidates in image
+    \item AI Service selects plate with highest confidence and largest area
+    \item AI Service processes selected plate for OCR
+    \item System logs all detected plates for review
+\end{enumerate}
+\noindent \textbf{AF4: Night mode with low light (at step 4)}
+\begin{enumerate}
+    \item System detects low ambient light condition
+    \item IoT Gateway activates IR illuminator before capture
+    \item Camera captures image with IR enhancement
+    \item AI Service applies night-mode preprocessing filters
+\end{enumerate}
+\\ \hline
+Exception Flow &
+\noindent \textbf{EF1: Camera capture fails (at step 4)}
+\begin{enumerate}
+    \item Camera returns error or timeout on capture request
+    \item IoT Gateway retries capture up to 3 times
+    \item If all retries fail, system alerts guard for manual processing
+    \item Guard uses manual verification via intercom
+\end{enumerate}
+
+\noindent \textbf{EF2: AI Service unavailable (at step 5)}
+\begin{enumerate}
+    \item IoT Gateway cannot connect to AI Service endpoint
+    \item System falls back to guard notification mode
+    \item Guard screen displays captured image for manual plate entry
+    \item Guard enters plate manually and system verifies against database
+\end{enumerate}
+
+\noindent \textbf{EF3: No plate detected in image (at step 7)}
+\begin{enumerate}
+    \item YOLOv8 model returns empty detection result
+    \item IoT Gateway requests second image capture with adjusted settings
+    \item If second attempt fails, system alerts guard
+    \item Guard manually processes vehicle entry
+\end{enumerate}
+
+\noindent \textbf{EF4: Unregistered plate detected (at step 12)}
+\begin{enumerate}
+    \item Backend finds no matching vehicle or guest registration
+    \item System logs unauthorized access attempt with captured image
+    \item Guard screen displays alert with vehicle image
+    \item Guard communicates with driver via intercom
+    \item Guard decides to allow manual entry or deny access
+\end{enumerate}
+
+\noindent \textbf{EF5: Gate barrier malfunction (at step 17)}
+\begin{enumerate}
+    \item Arduino reports servo motor error or timeout
+    \item IoT Gateway logs hardware failure
+    \item System alerts maintenance team
+    \item Guard manually opens barrier using override key
+\end{enumerate}
+\\ \hline
+\caption{UC\_04: AI-Powered Automatic Check-In}\label{tab:uc04}
+\end{longtable}
+
+\newpage
+\subsection{Manager Dashboard KPIs}
+The Manager Dashboard is designed to provide a concise, real-time operational overview of the residential area through four core Key Performance Indicators (KPIs), extracted directly from the \texttt{access\_logs} table.
+
+\begin{longtable}{@{}
+    >{\centering\arraybackslash}p{0.05\textwidth}
+    >{\raggedright\arraybackslash}p{0.22\textwidth}
+    p{0.38\textwidth}
+    >{\raggedright\arraybackslash}p{0.28\textwidth} @{}}
+
+    \caption{Manager Dashboard KPIs}
+    \label{tab:manager_kpis} \\
+
+    \toprule
+    \textbf{\#} & \textbf{KPI} & \textbf{Description} & \textbf{Data Source (Logic)} \\
+    \midrule
+    \endfirsthead
+
+    \caption[]{... (continued)} \\
+    \toprule
+    \textbf{\#} & \textbf{KPI} & \textbf{Description} & \textbf{Data Source (Logic)} \\
+    \midrule
+    \endhead
+
+    \bottomrule
+    \endlastfoot
+
+    1 & Total Traffic Volume & Total number of entry/exit events recorded today (from 00:00 to current time). & Count all records in \texttt{access\_logs} where date equals today. \\
+    \addlinespace
+    2 & Automation Rate & Percentage of gate openings triggered automatically by AI (plate recognition, camera OTP, or camera QR) out of total recorded events. & Ratio of records where \texttt{access\_method} is \texttt{ai\_plate\_recognition}, \texttt{ai\_camera\_otp}, or \texttt{ai\_camera\_qr} to total records. \\
+    \addlinespace
+    3 & Security Alerts & Total number of access attempts denied — unregistered vehicle, invalid OTP, or anti-passback violation. & Count records where \texttt{vehicle\_id}, \texttt{guest\_reg\_id}, and \texttt{token\_id} are all \texttt{NULL} (no authorized entity matched). \\
+    \addlinespace
+    4 & Active Visitors & Number of pre-registered guest vehicles currently inside the compound (inbound entries minus outbound exits). & Count inbound logs linked to \texttt{guest\_registrations} minus outbound logs for the same guest registrations. \\
+\end{longtable}
+
+\newpage
+%===========================================
+% SECTION 5: IOT GATEWAY IMPLEMENTATION (PYTHON)
+%===========================================
+\section{IoT Gateway Implementation (Python)}
+
+The IoT Gateway is a Python application (\texttt{SystemCommunication.py}) that serves as the bridge between the Backend server and the Arduino hardware. It connects to the Backend via WebSocket (Socket.IO) and communicates with Arduino via PySerial to control the gate barrier.
+
+\begin{tcolorbox}[colback=white!95!gray, colframe=black, title=IoT Gateway Architecture]
+\begin{enumerate}
+    \item \textbf{Configuration \& Initialization}:
+    \begin{itemize}
+        \item Establishes serial connection to Arduino via PySerial at 9600 baud.
+        \item Connects to Backend WebSocket server as Socket.IO client on port 5000.
+        \item Initializes OpenCV camera capture (\texttt{cv2.VideoCapture}).
+    \end{itemize}
+    \item \textbf{Sensor Detection Handler}:
+    \begin{itemize}
+        \item Arduino sends \texttt{CAR\_ARRIVED} signal via serial when HC-SR04 sensor detects a vehicle at the gate.
+        \item Gateway reads serial data continuously in the main loop.
+        \item Upon \texttt{CAR\_ARRIVED} signal, Gateway reads the current camera frame and initiates AI recognition.
+    \end{itemize}
+    \item \textbf{Image Capture and AI Processing}:
+    \begin{itemize}
+        \item Reads current camera frame using OpenCV (\texttt{cv2.VideoCapture}).
+        \item Encodes frame to base64 format for HTTP transmission.
+        \item Calls local AI engine (\texttt{extract\_license\_plates}) to detect and extract plate text.
+    \end{itemize}
+    \item \textbf{Access Verification}:
+    \begin{itemize}
+        \item Sends \texttt{POST /api/v1/gates/check-in} to Backend with \texttt{lane\_id}, \texttt{plate\_text}, and \texttt{image\_base64}.
+        \item Backend returns authorization response with \texttt{action} field: \texttt{OPEN} or \texttt{KEEP\_CLOSED}.
+        \item Gateway processes response and sends corresponding serial command to Arduino.
+    \end{itemize}
+    \item \textbf{Gate Control via Serial}:
+    \begin{itemize}
+        \item On \texttt{OPEN}: sends \texttt{ENTRY\_GO:OwnerName\textbackslash n} to Arduino $\rightarrow$ Arduino opens barrier and shows welcome message on LCD.
+        \item On denial: sends \texttt{DENY\_PLATE:PlateText\textbackslash n} $\rightarrow$ Arduino shows \texttt{UNAUTHORIZED GUEST} on LCD.
+        \item Arduino auto-closes barrier when exit HC-SR04 sensor detects vehicle has passed through.
+    \end{itemize}
+    \item \textbf{WebSocket Event Handling}:
+    \begin{itemize}
+        \item Continuously streams camera frames to Frontend via \texttt{video\_stream} Socket.IO event.
+        \item Emits \texttt{scan\_result} event to Frontend with plate, owner name, and vehicle type after each check-in.
+        \item Listens for \texttt{manual\_command} event from Backend: \texttt{OPEN} $\rightarrow$ sends \texttt{ENTRY\_GO:Operator\textbackslash n}; \texttt{CLOSE} $\rightarrow$ sends \texttt{FORCE\_CLOSE\textbackslash n}.
+    \end{itemize}
+\end{enumerate}
+\end{tcolorbox}
+
+\subsection{Serial Communication Protocol}
+The following tables define the serial protocol between the IoT Gateway (\texttt{SystemCommunication.py}) and the Arduino (\texttt{Hardware.ino}) operating at 9600 baud.
+
+\noindent \textbf{Commands sent from IoT Gateway to Arduino:}
+
+\begin{longtable}{@{}
+    >{\raggedright\arraybackslash}p{0.40\textwidth}
+    p{0.53\textwidth} @{}}
+
+    \caption{Serial Commands: IoT Gateway $\rightarrow$ Arduino}
+    \label{tab:serial_commands} \\
+
+    \toprule
+    \textbf{Command} & \textbf{Meaning} \\
+    \midrule
+    \endfirsthead
+
+    \bottomrule
+    \endlastfoot
+
+    \texttt{ENTRY\_GO:\textit{OwnerName}\textbackslash n} & Open barrier; Arduino displays welcome message with owner name on LCD and beeps once. \\
+    \addlinespace
+    \texttt{FORCE\_CLOSE\textbackslash n} & Emergency close all barriers; Arduino displays \texttt{EMERGENCY CLOSE} on LCD and beeps three times. \\
+    \addlinespace
+    \texttt{DENY\_PLATE:\textit{PlateText}\textbackslash n} & Access denied; Arduino displays \texttt{UNAUTHORIZED GUEST} on LCD and beeps once. \\
+\end{longtable}
+
+\vspace{0.5em}
+\noindent \textbf{Signals received by IoT Gateway from Arduino:}
+
+\begin{longtable}{@{}
+    >{\raggedright\arraybackslash}p{0.40\textwidth}
+    p{0.53\textwidth} @{}}
+
+    \caption{Serial Signals: Arduino $\rightarrow$ IoT Gateway}
+    \label{tab:serial_signals} \\
+
+    \toprule
+    \textbf{Signal} & \textbf{Meaning} \\
+    \midrule
+    \endfirsthead
+
+    \bottomrule
+    \endlastfoot
+
+    \texttt{CAR\_ARRIVED\textbackslash n} & HC-SR04 ultrasonic sensor detected a vehicle approaching the gate; triggers AI license plate recognition in the Gateway. \\
+\end{longtable}
+
+\subsection{Analysis of Problems \& Solutions}
+To ensure the system not only works but also performs well and securely, the following practical technical issues were analyzed and resolved:
+
+\noindent \textbf{1/ Query Optimization and Indexing}
+\begin{itemize}
+    \item \textbf{Problem:} As the number of access logs grows, querying for vehicle verification and displaying access history can become slow.
+    \item \textbf{Solution:} Indexes were created on \textbf{license\_plate} in vehicles table and \textbf{log\_timestamp} in access\_logs table. The B-tree index on license plate enables instant plate lookup during AI check-in process.
+\end{itemize}
+
+\noindent \textbf{2/ Image Storage Strategy}
+\begin{itemize}
+    \item \textbf{Problem:} Each access event captures both full snapshot and cropped plate images, leading to large storage requirements.
+    \item \textbf{Solution:} PostgreSQL BYTEA column type is used for storing images directly in the database, ensuring transactional consistency. Images are compressed before storage. Old access logs (older than 90 days) are archived to separate storage.
+\end{itemize}
+
+\noindent \textbf{3/ Real-time Communication}
+\begin{itemize}
+    \item \textbf{Problem:} The guard dashboard needs to display access events in real-time without constant polling.
+    \item \textbf{Solution:} WebSocket connection is established between Backend and guard dashboard. When new access event occurs, Backend broadcasts the event to all connected guard screens instantly.
+\end{itemize}
+
+\noindent \textbf{4/ Hardware Failure Handling}
+\begin{itemize}
+    \item \textbf{Problem:} If the camera, AI service, or Arduino fails, the gate should not block vehicle access indefinitely.
+    \item \textbf{Solution:} The IoT Gateway implements a fallback mechanism. If AI service is unavailable for more than 30 seconds, system switches to manual mode and alerts guard. Guard can use manual override button to control the barrier directly.
+\end{itemize}
+
+\noindent \textbf{5/ Security and Authentication}
+\begin{itemize}
+    \item \textbf{Problem:} The IoT Gateway API endpoints could be exploited if not properly secured.
+    \item \textbf{Solution:} All API requests between Backend and IoT Gateway use API key authentication. The API key is stored in environment variables and validated on each request. Additionally, the IoT Gateway only accepts connections from whitelisted IP addresses.
+\end{itemize}
+
+\section{Database}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.05\textwidth]{image/Database.png}
+    \caption{Database Schema Diagram}
+    \label{fig:database-schema}
+\end{figure}
+
+\subsection{Database Schema Tables}
+\begin{itemize}
+    \item \textbf{ZONES} (zone\_id, zone\_name, description, created\_at)
+    \begin{itemize}
+        \item Primary key: zone\_id
+    \end{itemize}
+
+    \item \textbf{GATES} (gate\_id, zone\_id, gate\_name, is\_active)
+    \begin{itemize}
+        \item Primary key: gate\_id
+        \item Foreign key: zone\_id references ZONES(zone\_id)
+    \end{itemize}
+
+    \item \textbf{LANES} (lane\_id, gate\_id, lane\_name, direction\_enum)
+    \begin{itemize}
+        \item Primary key: lane\_id
+        \item Foreign key: gate\_id references GATES(gate\_id)
+    \end{itemize}
+
+    \item \textbf{IOT\_DEVICES} (device\_id, lane\_id, device\_name, device\_type, ip\_address, mac\_address, status, last\_ping)
+    \begin{itemize}
+        \item Primary key: device\_id
+        \item Foreign key: lane\_id references LANES(lane\_id)
+    \end{itemize}
+
+    \item \textbf{USERS} (user\_id, username, password\_hash, full\_name, email, role, avatar\_url)
+    \begin{itemize}
+        \item Primary key: user\_id
+    \end{itemize}
+
+    \item \textbf{CITIZENS} (user\_id, address, zone\_id, phone\_number, identity\_card\_number, is\_house\_owner)
+    \begin{itemize}
+        \item Primary key: user\_id
+        \item Foreign keys: user\_id references USERS(user\_id), zone\_id references ZONES(zone\_id)
+    \end{itemize}
+
+    \item \textbf{SECURITY\_GUARDS} (user\_id, assigned\_gate\_id, employee\_code, shift\_start, shift\_end)
+    \begin{itemize}
+        \item Primary key: user\_id
+        \item Foreign keys: user\_id references USERS(user\_id), assigned\_gate\_id references GATES(gate\_id)
+    \end{itemize}
+
+    \item \textbf{MANAGERS} (user\_id, managed\_zone\_id, department\_name)
+    \begin{itemize}
+        \item Primary key: user\_id
+        \item Foreign keys: user\_id references USERS(user\_id), managed\_zone\_id references ZONES(zone\_id)
+    \end{itemize}
+
+    \item \textbf{VEHICLES} (vehicle\_id, owner\_user\_id, vehicle\_type, license\_plate, vehicle\_color, is\_inside, is\_active, last\_log\_time, registered\_at)
+    \begin{itemize}
+        \item Primary key: vehicle\_id
+        \item Foreign key: owner\_user\_id references USERS(user\_id)
+    \end{itemize}
+
+    \item \textbf{GUEST\_REGISTRATIONS} (registration\_id, host\_user\_id, guest\_name, vehicle\_type, guest\_license\_plate, visit\_start\_time, visit\_end\_time, status)
+    \begin{itemize}
+        \item Primary key: registration\_id
+        \item Foreign key: host\_user\_id references USERS(user\_id)
+    \end{itemize}
+
+    \item \textbf{ACCESS\_TOKENS} (token\_id, issued\_by, token\_data, valid\_from, valid\_until, is\_used, used\_at)
+    \begin{itemize}
+        \item Primary key: token\_id
+        \item Foreign key: issued\_by references CITIZENS(user\_id)
+    \end{itemize}
+
+    \item \textbf{ACCESS\_LOGS} (log\_id, lane\_id, vehicle\_id, guest\_reg\_id, token\_id, guard\_id, check\_in\_time, detected\_text, access\_method, action\_reason, note, image\_snapshot\_data)
+    \begin{itemize}
+        \item Primary key: log\_id
+        \item Foreign keys: lane\_id references LANES(lane\_id), vehicle\_id references VEHICLES(vehicle\_id), guest\_reg\_id references GUEST\_REGISTRATIONS(registration\_id), token\_id references ACCESS\_TOKENS(token\_id), guard\_id references SECURITY\_GUARDS(user\_id)
+    \end{itemize}
+
+    \item \textbf{SYSTEM\_AUDIT\_LOGS} (audit\_id, actor\_id, device\_id, action\_type, target\_table, target\_id, action\_details, performed\_at)
+    \begin{itemize}
+        \item Primary key: audit\_id
+        \item Foreign keys: actor\_id references USERS(user\_id), device\_id references IOT\_DEVICES(device\_id)
+    \end{itemize}
+\end{itemize}
+
+\end{document}
