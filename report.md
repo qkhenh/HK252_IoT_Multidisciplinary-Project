@@ -2,7 +2,7 @@
 # (SMART TOLL GATE - IoT Multidisciplinary Project)
 
 **Mã môn học:** HK252 - Đa ngành IoT  
-**Ngày hoàn thành:** Tháng 02/2026
+**Cập nhật lần cuối:** Tháng 04/2026
 
 ---
 
@@ -168,10 +168,11 @@ backend/
 | Component | Technology | Version |
 |-----------|------------|---------|
 | **Backend** | Node.js + Express | 5.x |
-| **Database** | PostgreSQL (pgvector) | 17 |
+| **Realtime** | Socket.IO (WebSocket) | 4.x |
+| **Database** | PostgreSQL | 17 |
 | **AI Service** | Python + YOLOv8 + OCR | 3.11+ |
-| **IoT Gateway** | Python + pySerial | 3.11+ |
-| **Hardware** | Arduino + Servo Motor | - |
+| **IoT Gateway** | Python + pySerial + python-socketio | 3.11+ |
+| **Hardware** | Arduino Uno + Servo Motor + HC-SR04 | - |
 | **Authentication** | JWT (jsonwebtoken) | - |
 | **Containerization** | Docker + Docker Compose | - |
 
@@ -657,7 +658,7 @@ CREATE TYPE access_method_enum AS ENUM ('ai_plate_recognition', 'ai_camera_otp',
 | Table | Description | Columns |
 |-------|-------------|---------|
 | **citizens** | Cư dân | user_id (PK/FK), zone_id(FK -> zones), address, phone_number, identity_card_number, is_house_owner |
-| **security_guards** | Bảo vệ | user_id (PK/FK), **assigned_gate_id (FK → gates)**, employee_code, shift_start, shift_end |
+| **security_guards** | Bảo vệ | user_id (PK/FK), **assigned_gate_id (INT FK → gates)** *(guard quản lý tất cả lane trong gate)*, employee_code, shift_start, shift_end |
 | **managers** | Quản lý | user_id (PK/FK), managed_zone_id, department_name |
 
 #### 6.2.4 Business Tables
@@ -699,7 +700,7 @@ const base64ToBuffer = (base64String) => {
 ```
 
 **Lý do chọn BYTEA thay vì File System/S3:**
-- Đảm bảo tính toàn vẹn dữ liệu (ACID)
+- Đảm bảo tính toàn vẹn dữ liệu (ACID)  
 - Backup cùng database
 - Không cần quản lý file paths
 - Phù hợp với quy mô dự án
@@ -729,881 +730,263 @@ security_guards.employee_code UNIQUE
 
 ### 7.1 Tổng quan IoT Gateway
 
-IoT Gateway đóng vai trò cầu nối giữa Backend (Node.js) và Hardware (Arduino):
+IoT Gateway đóng vai trò cầu nối giữa Backend (Node.js) và Hardware (Arduino). Giao tiếp được thực hiện qua **WebSocket (Socket.IO)** thay vì HTTP riêng biệt:
 
 ```
-┌──────────────┐        HTTP/MQTT         ┌──────────────┐        Serial         ┌──────────────┐
-│   Backend    │ ──────────────────────►  │ IoT Gateway  │ ──────────────────►  │   Arduino    │
-│   (Node.js)  │         Command          │   (Python)   │       Command        │   (Servo)    │
-│              │ ◄──────────────────────  │              │ ◄──────────────────  │              │
-│              │         Response         │              │        Status        │              │
-└──────────────┘                          └──────────────┘                      └──────────────┘
+┌──────────────┐     WebSocket (Socket.IO)    ┌──────────────┐        Serial         ┌──────────────┐
+│   Backend    │ ◄──────────────────────────► │ IoT Gateway  │ ──────────────────►  │   Arduino    │
+│  (Node.js)   │  manual_command / scan_result│ (Python)     │  ENTRY_GO:Name\n    │  (C/C++)     │
+│  Port 5000   │                              │TestingMode.py│  FORCE_CLOSE\n      │Hardware.ino  │
+└──────────────┘                              └──────────────┘ ◄──────────────────  └──────────────┘
+        ▲                                                         CAR_ARRIVED\n
+        │ HTTP POST
+        │ /api/v1/gates/check-in
+        │ {lane_id, plate_text, image_base64}
+        │
+┌──────────────┐
+│  IoT Gateway │ (gửi kết quả AI lên Backend)
+│ (Python)     │
+└──────────────┘
 ```
 
-### 7.2 Cấu trúc thư mục IoT Gateway
+**Luồng giao tiếp chi tiết:**
+1. **Camera → Python**: Python đọc frame từ camera (OpenCV), gọi AI nhận diện biển số
+2. **Python → Backend (HTTP)**: `POST /api/v1/gates/check-in` với `{lane_id, plate_text, image_base64}`
+3. **Backend → Python (WebSocket)**: Phản hồi qua `scan_result` event; lệnh thủ công qua `manual_command` event
+4. **Python → Arduino (Serial)**: `ENTRY_GO:TenChuXe\n` để mở cổng; `FORCE_CLOSE\n` để đóng khẩn
+5. **Arduino → Python (Serial)**: `CAR_ARRIVED` khi sensor phát hiện xe đến cổng
+
+### 7.2 Cấu trúc file IoT Gateway
 
 ```
-iot_gateway/
-├── main.py                 # Entry point
-├── config.py               # Configuration
-├── requirements.txt        # Dependencies
-├── gateway/
-│   ├── __init__.py
-│   ├── http_server.py      # Flask HTTP API
-│   ├── mqtt_client.py      # MQTT subscriber (optional)
-│   ├── serial_controller.py # PySerial communication
-│   └── command_handler.py  # Business logic
-├── hardware/
-│   ├── __init__.py
-│   └── arduino_protocol.py # Protocol definition
-└── utils/
-    ├── __init__.py
-    └── logger.py           # Logging utility
+DemoTest_SmartToll/
+├── Hardware.ino        # Arduino sketch (C++)
+└── TestingMode.py      # IoT Gateway + AI Integration (Python)
 ```
+
+**`TestingMode.py`** đảm nhiệm toàn bộ:
+- Kết nối WebSocket đến Backend (Socket.IO client)
+- Lắng nghe lệnh `manual_command` từ Backend (guard/manager mở/đóng cổng)
+- Đọc camera, gọi AI nhận diện biển số
+- Gửi HTTP POST check-in lên Backend
+- Giao tiếp Serial với Arduino
+- Stream video lên Frontend (React) qua `video_stream` WebSocket event
 
 ### 7.3 Implementation Code
 
-#### `config.py` - Configuration
+#### `DemoTest_SmartToll/SystemCommunication.py` - IoT Gateway chính
+
+File này thực hiện toàn bộ luồng: đọc camera → gọi AI → gửi HTTP lên Backend → nhận kết quả → gửi Serial tới Arduino.
 
 ```python
-"""
-IoT Gateway Configuration
-"""
-import os
-from dataclasses import dataclass
+import cv2, time, base64, requests, os, serial, unicodedata
+import socketio
+from ai_engine import extract_license_plates
 
-@dataclass
-class Config:
-    # Serial Port Configuration
-    SERIAL_PORT: str = os.getenv('SERIAL_PORT', 'COM3')  # Windows: COM3, Linux: /dev/ttyUSB0
-    SERIAL_BAUDRATE: int = int(os.getenv('SERIAL_BAUDRATE', '9600'))
-    SERIAL_TIMEOUT: float = float(os.getenv('SERIAL_TIMEOUT', '1.0'))
-    
-    # HTTP Server Configuration
-    HTTP_HOST: str = os.getenv('HTTP_HOST', '0.0.0.0')
-    HTTP_PORT: int = int(os.getenv('HTTP_PORT', '8080'))
-    
-    # MQTT Configuration (Optional)
-    MQTT_BROKER: str = os.getenv('MQTT_BROKER', 'localhost')
-    MQTT_PORT: int = int(os.getenv('MQTT_PORT', '1883'))
-    MQTT_TOPIC_COMMAND: str = os.getenv('MQTT_TOPIC_COMMAND', 'smartgate/command')
-    MQTT_TOPIC_STATUS: str = os.getenv('MQTT_TOPIC_STATUS', 'smartgate/status')
-    
-    # Gate Configuration
-    GATE_ID: int = int(os.getenv('GATE_ID', '1'))
-    BARRIER_OPEN_DURATION: int = int(os.getenv('BARRIER_OPEN_DURATION', '5'))  # seconds
-    
-    # Logging
-    LOG_LEVEL: str = os.getenv('LOG_LEVEL', 'INFO')
+NODEJS_BACKEND_URL = "http://localhost:5000/api/v1/gates/check-in"
+LANE_ID = "MAIN-IN"
+ARDUINO_PORT = "COM5"
+BAUD_RATE = 9600
 
-config = Config()
-```
+# Ket noi Serial toi Arduino
+try:
+    ser = serial.Serial(ARDUINO_PORT, BAUD_RATE, timeout=1)
+    time.sleep(2)
+except Exception as e:
+    ser = None
 
-#### `hardware/arduino_protocol.py` - Protocol Definition
+# Ket noi WebSocket toi Backend
+sio = socketio.Client()
 
-```python
-"""
-Arduino Communication Protocol
-Defines command structure for serial communication
-"""
-from enum import Enum
-from dataclasses import dataclass
-from typing import Optional
+@sio.on("manual_command")
+def on_manual_command(data):
+    action = data.get("action")
+    name = data.get("name", "Operator")
+    if action == "OPEN" and ser:
+        ser.write(f"ENTRY_GO:{name}\n".encode())
+    elif action == "CLOSE" and ser:
+        ser.write(b"FORCE_CLOSE\n")
 
+sio.connect("http://localhost:5000")
 
-class CommandType(Enum):
-    """Available commands for barrier control"""
-    OPEN = "OPEN"           # Open barrier
-    CLOSE = "CLOSE"         # Close barrier
-    STATUS = "STATUS"       # Get current status
-    BUZZER_ON = "BUZZ_ON"   # Turn on warning buzzer
-    BUZZER_OFF = "BUZZ_OFF" # Turn off warning buzzer
-    LED_GREEN = "LED_G"     # Green LED (access granted)
-    LED_RED = "LED_R"       # Red LED (access denied)
-    HEARTBEAT = "HB"        # Health check
+def strip_accents(text):
+    return "".join(c for c in unicodedata.normalize("NFD", text)
+                   if unicodedata.category(c) != "Mn")
 
-
-class BarrierStatus(Enum):
-    """Barrier states"""
-    OPEN = "OPEN"
-    CLOSED = "CLOSED"
-    MOVING = "MOVING"
-    ERROR = "ERROR"
-    UNKNOWN = "UNKNOWN"
-
-
-@dataclass
-class ArduinoCommand:
-    """Command to send to Arduino"""
-    command: CommandType
-    duration: Optional[int] = None  # Optional duration in seconds
-    
-    def to_serial(self) -> str:
-        """Convert to serial string format"""
-        if self.duration:
-            return f"{self.command.value}:{self.duration}\n"
-        return f"{self.command.value}\n"
-
-
-@dataclass
-class ArduinoResponse:
-    """Response from Arduino"""
-    success: bool
-    status: BarrierStatus
-    message: str
-    
-    @classmethod
-    def from_serial(cls, raw: str) -> 'ArduinoResponse':
-        """Parse serial response from Arduino"""
-        raw = raw.strip()
-        
-        if raw.startswith("OK"):
-            parts = raw.split(":")
-            status_str = parts[1] if len(parts) > 1 else "UNKNOWN"
-            try:
-                status = BarrierStatus(status_str)
-            except ValueError:
-                status = BarrierStatus.UNKNOWN
-            return cls(success=True, status=status, message=raw)
-        
-        elif raw.startswith("ERR"):
-            return cls(success=False, status=BarrierStatus.ERROR, message=raw)
-        
-        else:
-            return cls(success=False, status=BarrierStatus.UNKNOWN, message=raw)
-```
-
-#### `gateway/serial_controller.py` - Serial Communication
-
-```python
-"""
-Serial Controller
-Handles communication with Arduino via PySerial
-"""
-import serial
-import threading
-import time
-from typing import Optional, Callable
-from queue import Queue
-
-from config import config
-from hardware.arduino_protocol import (
-    ArduinoCommand, 
-    ArduinoResponse, 
-    CommandType,
-    BarrierStatus
-)
-from utils.logger import get_logger
-
-logger = get_logger(__name__)
-
-
-class SerialController:
-    """Manages serial connection to Arduino"""
-    
-    def __init__(self):
-        self._serial: Optional[serial.Serial] = None
-        self._lock = threading.Lock()
-        self._command_queue: Queue = Queue()
-        self._is_running = False
-        self._worker_thread: Optional[threading.Thread] = None
-        self._status_callback: Optional[Callable] = None
-        self._current_status = BarrierStatus.UNKNOWN
-    
-    def connect(self) -> bool:
-        """Establish serial connection to Arduino"""
-        try:
-            self._serial = serial.Serial(
-                port=config.SERIAL_PORT,
-                baudrate=config.SERIAL_BAUDRATE,
-                timeout=config.SERIAL_TIMEOUT
-            )
-            time.sleep(2)  # Wait for Arduino to reset
-            logger.info(f"Connected to Arduino on {config.SERIAL_PORT}")
-            return True
-        except serial.SerialException as e:
-            logger.error(f"Failed to connect to Arduino: {e}")
-            return False
-    
-    def disconnect(self):
-        """Close serial connection"""
-        self._is_running = False
-        if self._worker_thread:
-            self._worker_thread.join(timeout=2)
-        if self._serial and self._serial.is_open:
-            self._serial.close()
-            logger.info("Disconnected from Arduino")
-    
-    def start_worker(self):
-        """Start background worker for processing commands"""
-        self._is_running = True
-        self._worker_thread = threading.Thread(target=self._process_queue, daemon=True)
-        self._worker_thread.start()
-        logger.info("Serial worker started")
-    
-    def _process_queue(self):
-        """Background worker to process command queue"""
-        while self._is_running:
-            try:
-                if not self._command_queue.empty():
-                    command = self._command_queue.get(timeout=0.1)
-                    self._send_command(command)
-                else:
-                    time.sleep(0.1)
-            except Exception as e:
-                logger.error(f"Error processing command queue: {e}")
-    
-    def send_command(self, command: ArduinoCommand) -> ArduinoResponse:
-        """Send command to Arduino (blocking)"""
-        with self._lock:
-            return self._send_command(command)
-    
-    def _send_command(self, command: ArduinoCommand) -> ArduinoResponse:
-        """Internal method to send command"""
-        if not self._serial or not self._serial.is_open:
-            return ArduinoResponse(
-                success=False, 
-                status=BarrierStatus.ERROR,
-                message="Serial connection not open"
-            )
-        
-        try:
-            # Clear buffers
-            self._serial.reset_input_buffer()
-            
-            # Send command
-            cmd_str = command.to_serial()
-            self._serial.write(cmd_str.encode('utf-8'))
-            logger.debug(f"Sent: {cmd_str.strip()}")
-            
-            # Wait for response
-            time.sleep(0.1)
-            response_raw = self._serial.readline().decode('utf-8')
-            logger.debug(f"Received: {response_raw.strip()}")
-            
-            response = ArduinoResponse.from_serial(response_raw)
-            
-            if response.success:
-                self._current_status = response.status
-                if self._status_callback:
-                    self._status_callback(response.status)
-            
-            return response
-            
-        except Exception as e:
-            logger.error(f"Error sending command: {e}")
-            return ArduinoResponse(
-                success=False,
-                status=BarrierStatus.ERROR,
-                message=str(e)
-            )
-    
-    def open_barrier(self, duration: int = None) -> ArduinoResponse:
-        """Open the barrier"""
-        duration = duration or config.BARRIER_OPEN_DURATION
-        return self.send_command(ArduinoCommand(CommandType.OPEN, duration))
-    
-    def close_barrier(self) -> ArduinoResponse:
-        """Close the barrier"""
-        return self.send_command(ArduinoCommand(CommandType.CLOSE))
-    
-    def get_status(self) -> ArduinoResponse:
-        """Get current barrier status"""
-        return self.send_command(ArduinoCommand(CommandType.STATUS))
-    
-    def signal_granted(self) -> ArduinoResponse:
-        """Signal access granted (green LED)"""
-        return self.send_command(ArduinoCommand(CommandType.LED_GREEN))
-    
-    def signal_denied(self) -> ArduinoResponse:
-        """Signal access denied (red LED + buzzer)"""
-        self.send_command(ArduinoCommand(CommandType.LED_RED))
-        return self.send_command(ArduinoCommand(CommandType.BUZZER_ON))
-    
-    def heartbeat(self) -> bool:
-        """Check if Arduino is responsive"""
-        response = self.send_command(ArduinoCommand(CommandType.HEARTBEAT))
-        return response.success
-    
-    def set_status_callback(self, callback: Callable):
-        """Set callback for status changes"""
-        self._status_callback = callback
-    
-    @property
-    def current_status(self) -> BarrierStatus:
-        return self._current_status
-```
-
-#### `gateway/command_handler.py` - Business Logic
-
-```python
-"""
-Command Handler
-Processes commands from Backend and orchestrates Arduino operations
-"""
-from dataclasses import dataclass
-from enum import Enum
-from typing import Dict, Any
-import time
-
-from gateway.serial_controller import SerialController
-from hardware.arduino_protocol import BarrierStatus
-from utils.logger import get_logger
-from config import config
-
-logger = get_logger(__name__)
-
-
-class ActionType(Enum):
-    """Actions received from Backend"""
-    OPEN = "OPEN"
-    KEEP_CLOSED = "KEEP_CLOSED"
-    EMERGENCY_OPEN = "EMERGENCY_OPEN"
-    TEST = "TEST"
-
-
-@dataclass
-class GateCommand:
-    """Command structure from Backend"""
-    action: ActionType
-    gate_id: int
-    log_id: int = None
-    plate_text: str = None
-    access_type: str = None  # 'resident', 'guest', 'otp', 'manual'
-    duration: int = None
-    
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'GateCommand':
-        """Parse from JSON request"""
-        return cls(
-            action=ActionType(data.get('action', 'KEEP_CLOSED')),
-            gate_id=data.get('gate_id', config.GATE_ID),
-            log_id=data.get('log_id'),
-            plate_text=data.get('plate_text'),
-            access_type=data.get('access_type'),
-            duration=data.get('duration')
-        )
-
-
-@dataclass
-class GateResponse:
-    """Response structure to Backend"""
-    success: bool
-    gate_id: int
-    barrier_status: str
-    message: str
-    execution_time_ms: int
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'success': self.success,
-            'gate_id': self.gate_id,
-            'barrier_status': self.barrier_status,
-            'message': self.message,
-            'execution_time_ms': self.execution_time_ms
-        }
-
-
-class CommandHandler:
-    """Handles gate commands from Backend"""
-    
-    def __init__(self, serial_controller: SerialController):
-        self._serial = serial_controller
-        self._gate_id = config.GATE_ID
-    
-    def handle_command(self, command: GateCommand) -> GateResponse:
-        """Process incoming command"""
-        start_time = time.time()
-        
-        logger.info(f"Processing command: {command.action.value} for gate {command.gate_id}")
-        
-        # Verify gate_id matches this gateway
-        if command.gate_id != self._gate_id:
-            return GateResponse(
-                success=False,
-                gate_id=self._gate_id,
-                barrier_status=self._serial.current_status.value,
-                message=f"Gate ID mismatch. This gateway controls gate {self._gate_id}",
-                execution_time_ms=int((time.time() - start_time) * 1000)
-            )
-        
-        # Route to appropriate handler
-        if command.action == ActionType.OPEN:
-            return self._handle_open(command, start_time)
-        elif command.action == ActionType.KEEP_CLOSED:
-            return self._handle_keep_closed(command, start_time)
-        elif command.action == ActionType.EMERGENCY_OPEN:
-            return self._handle_emergency(command, start_time)
-        elif command.action == ActionType.TEST:
-            return self._handle_test(start_time)
-        else:
-            return GateResponse(
-                success=False,
-                gate_id=self._gate_id,
-                barrier_status=self._serial.current_status.value,
-                message=f"Unknown action: {command.action}",
-                execution_time_ms=int((time.time() - start_time) * 1000)
-            )
-    
-    def _handle_open(self, command: GateCommand, start_time: float) -> GateResponse:
-        """Handle OPEN command - access granted"""
-        logger.info(f"Opening barrier for {command.access_type}: {command.plate_text}")
-        
-        # Signal granted (green LED)
-        self._serial.signal_granted()
-        
-        # Open barrier
-        duration = command.duration or config.BARRIER_OPEN_DURATION
-        response = self._serial.open_barrier(duration)
-        
-        return GateResponse(
-            success=response.success,
-            gate_id=self._gate_id,
-            barrier_status=response.status.value,
-            message=f"Barrier opened for {command.plate_text}" if response.success else response.message,
-            execution_time_ms=int((time.time() - start_time) * 1000)
-        )
-    
-    def _handle_keep_closed(self, command: GateCommand, start_time: float) -> GateResponse:
-        """Handle KEEP_CLOSED command - access denied"""
-        logger.info(f"Keeping barrier closed for: {command.plate_text}")
-        
-        # Signal denied (red LED + short buzzer)
-        self._serial.signal_denied()
-        
-        return GateResponse(
-            success=True,
-            gate_id=self._gate_id,
-            barrier_status=BarrierStatus.CLOSED.value,
-            message=f"Access denied for {command.plate_text}",
-            execution_time_ms=int((time.time() - start_time) * 1000)
-        )
-    
-    def _handle_emergency(self, command: GateCommand, start_time: float) -> GateResponse:
-        """Handle EMERGENCY_OPEN command - immediate open"""
-        logger.warning("EMERGENCY OPEN triggered!")
-        
-        # Open immediately without duration limit
-        response = self._serial.open_barrier(duration=30)  # 30 seconds for emergency
-        
-        return GateResponse(
-            success=response.success,
-            gate_id=self._gate_id,
-            barrier_status=response.status.value,
-            message="Emergency barrier open" if response.success else response.message,
-            execution_time_ms=int((time.time() - start_time) * 1000)
-        )
-    
-    def _handle_test(self, start_time: float) -> GateResponse:
-        """Handle TEST command - heartbeat check"""
-        is_responsive = self._serial.heartbeat()
-        
-        return GateResponse(
-            success=is_responsive,
-            gate_id=self._gate_id,
-            barrier_status=self._serial.current_status.value,
-            message="Gateway and Arduino responsive" if is_responsive else "Arduino not responding",
-            execution_time_ms=int((time.time() - start_time) * 1000)
-        )
-    
-    def get_status(self) -> GateResponse:
-        """Get current gate status"""
-        start_time = time.time()
-        response = self._serial.get_status()
-        
-        return GateResponse(
-            success=response.success,
-            gate_id=self._gate_id,
-            barrier_status=response.status.value,
-            message=response.message,
-            execution_time_ms=int((time.time() - start_time) * 1000)
-        )
-```
-
-#### `gateway/http_server.py` - Flask HTTP API
-
-```python
-"""
-HTTP Server
-REST API for receiving commands from Backend
-"""
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-import threading
-
-from gateway.command_handler import CommandHandler, GateCommand
-from gateway.serial_controller import SerialController
-from config import config
-from utils.logger import get_logger
-
-logger = get_logger(__name__)
-
-
-def create_app(command_handler: CommandHandler) -> Flask:
-    """Create Flask application"""
-    app = Flask(__name__)
-    CORS(app)
-    
-    @app.route('/health', methods=['GET'])
-    def health_check():
-        """Health check endpoint"""
-        return jsonify({
-            'status': 'ok',
-            'gate_id': config.GATE_ID,
-            'message': 'IoT Gateway is running'
-        })
-    
-    @app.route('/api/v1/command', methods=['POST'])
-    def receive_command():
-        """
-        Receive command from Backend
-        
-        Expected JSON:
-        {
-            "action": "OPEN" | "KEEP_CLOSED" | "EMERGENCY_OPEN" | "TEST",
-            "gate_id": 1,
-            "log_id": 123,
-            "plate_text": "51A-12345",
-            "access_type": "resident" | "guest" | "otp" | "manual",
-            "duration": 5
-        }
-        """
-        try:
-            data = request.get_json()
-            if not data:
-                return jsonify({'error': 'Invalid JSON'}), 400
-            
-            command = GateCommand.from_dict(data)
-            response = command_handler.handle_command(command)
-            
-            return jsonify(response.to_dict()), 200 if response.success else 500
-            
-        except ValueError as e:
-            logger.error(f"Invalid command: {e}")
-            return jsonify({'error': str(e)}), 400
-        except Exception as e:
-            logger.error(f"Command processing error: {e}")
-            return jsonify({'error': 'Internal server error'}), 500
-    
-    @app.route('/api/v1/status', methods=['GET'])
-    def get_status():
-        """Get current gate status"""
-        response = command_handler.get_status()
-        return jsonify(response.to_dict())
-    
-    @app.route('/api/v1/open', methods=['POST'])
-    def manual_open():
-        """Manual open command (for testing)"""
-        command = GateCommand.from_dict({
-            'action': 'OPEN',
-            'gate_id': config.GATE_ID,
-            'access_type': 'manual_test'
-        })
-        response = command_handler.handle_command(command)
-        return jsonify(response.to_dict())
-    
-    @app.route('/api/v1/close', methods=['POST'])
-    def manual_close():
-        """Manual close command (for testing)"""
-        serial_controller = command_handler._serial
-        response = serial_controller.close_barrier()
-        return jsonify({
-            'success': response.success,
-            'status': response.status.value,
-            'message': response.message
-        })
-    
-    return app
-
-
-def start_http_server(command_handler: CommandHandler):
-    """Start Flask HTTP server in a thread"""
-    app = create_app(command_handler)
-    
-    logger.info(f"Starting HTTP server on {config.HTTP_HOST}:{config.HTTP_PORT}")
-    
-    # Use production server in deployment
-    app.run(
-        host=config.HTTP_HOST,
-        port=config.HTTP_PORT,
-        debug=False,
-        threaded=True
-    )
-```
-
-#### `utils/logger.py` - Logging Utility
-
-```python
-"""
-Logger Utility
-Structured logging for IoT Gateway
-"""
-import logging
-import sys
-from config import config
-
-
-def get_logger(name: str) -> logging.Logger:
-    """Get configured logger instance"""
-    logger = logging.getLogger(name)
-    
-    if not logger.handlers:
-        handler = logging.StreamHandler(sys.stdout)
-        formatter = logging.Formatter(
-            '[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        )
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-        
-        log_level = getattr(logging, config.LOG_LEVEL.upper(), logging.INFO)
-        logger.setLevel(log_level)
-    
-    return logger
-```
-
-#### `main.py` - Entry Point
-
-```python
-"""
-IoT Gateway - Main Entry Point
-Smart Toll Gate System
-"""
-import signal
-import sys
-import time
-
-from gateway.serial_controller import SerialController
-from gateway.command_handler import CommandHandler
-from gateway.http_server import start_http_server
-from config import config
-from utils.logger import get_logger
-
-logger = get_logger('main')
-
+def send_to_backend(plate_text, processing_time_ms, image_base64):
+    payload = {
+        "lane_id": LANE_ID,
+        "plate_text": plate_text,
+        "processing_time_ms": processing_time_ms,
+        "image_base64": image_base64
+    }
+    response = requests.post(NODEJS_BACKEND_URL, json=payload)
+    return response.json()
 
 def main():
-    """Main entry point"""
-    logger.info("=" * 50)
-    logger.info("  SMART TOLL GATE - IoT Gateway")
-    logger.info(f"  Gate ID: {config.GATE_ID}")
-    logger.info("=" * 50)
-    
-    # Initialize serial controller
-    serial_controller = SerialController()
-    
-    # Connect to Arduino
-    logger.info(f"Connecting to Arduino on {config.SERIAL_PORT}...")
-    if not serial_controller.connect():
-        logger.error("Failed to connect to Arduino. Exiting.")
-        sys.exit(1)
-    
-    # Start serial worker
-    serial_controller.start_worker()
-    
-    # Initial status check
-    status = serial_controller.get_status()
-    logger.info(f"Initial barrier status: {status.status.value}")
-    
-    # Initialize command handler
-    command_handler = CommandHandler(serial_controller)
-    
-    # Graceful shutdown handler
-    def shutdown_handler(signum, frame):
-        logger.info("\nShutting down IoT Gateway...")
-        serial_controller.disconnect()
-        sys.exit(0)
-    
-    signal.signal(signal.SIGINT, shutdown_handler)
-    signal.signal(signal.SIGTERM, shutdown_handler)
-    
-    # Start HTTP server (blocking)
-    try:
-        start_http_server(command_handler)
-    except Exception as e:
-        logger.error(f"HTTP server error: {e}")
-        serial_controller.disconnect()
-        sys.exit(1)
+    cap = cv2.VideoCapture(0)
+    while True:
+        ret, frame = cap.read()
+        if not ret: break
 
+        # Stream video len Frontend
+        _, buf = cv2.imencode(".jpg", frame)
+        img_b64 = base64.b64encode(buf).decode("utf-8")
+        sio.emit("video_stream", {"image": img_b64})
 
-if __name__ == '__main__':
-    main()
+        # Doc tin hieu tu Arduino
+        if ser and ser.in_waiting:
+            line = ser.readline().decode(errors="ignore").strip()
+            if line == "CAR_ARRIVED":
+                ai_result = extract_license_plates(frame)
+                if ai_result.get("plates"):
+                    plate_text = ai_result["plates"][0]
+                    resp = send_to_backend(plate_text, 0, img_b64)
+                    if resp and resp.get("data", {}).get("action") == "OPEN":
+                        owner = resp["data"].get("owner_info", {})
+                        v_type = owner.get("vehicle_type", "unknown")
+                        clean_name = strip_accents(owner.get("name", "Guest"))
+                        if ser: ser.write(f"ENTRY_GO:{clean_name}\n".encode())
+                        sio.emit("scan_result", {
+                            "status": "OPEN",
+                            "plate": plate_text,
+                            "owner_name": owner.get("name", "N/A"),
+                            "vehicle_type": v_type,
+                            "captured_image": img_b64
+                        })
+                    else:
+                        sio.emit("scan_result", {"status": "DENIED", "plate": plate_text})
+                        if ser: ser.write(f"DENY_PLATE:{plate_text}\n".encode())
+
+        time.sleep(0.05)
 ```
 
-#### `requirements.txt` - Dependencies
+**Các Serial command gửi tới Arduino:**
 
-```
-flask>=2.0.0
-flask-cors>=3.0.0
-pyserial>=3.5
-python-dotenv>=0.19.0
-```
+| Command | Ý nghĩa |
+|---------|---------|
+| `ENTRY_GO:TenChuXe\n` | Mở cổng, hiện màn hình chào đón |
+| `FORCE_CLOSE\n` | Đóng khẩn cấp tất cả cổng |
+| `DENY_PLATE:BienSo\n` | Hiện màn hình "UNAUTHORIZED GUEST" |
 
-### 7.4 Arduino Sketch (Reference)
+**Các Serial signal nhận từ Arduino:**
+
+| Signal | Ý nghĩa |
+|--------|---------|
+| `CAR_ARRIVED` | Sensor phát hiện xe tới cổng, trigger AI scan |
+
+### 7.4 Arduino Sketch (`DemoTest_SmartToll/Hardware.ino`)
 
 ```cpp
-/*
- * Smart Toll Gate - Arduino Barrier Controller
- * Receives commands via Serial, controls servo motor
- */
-
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
 #include <Servo.h>
 
-// Pin definitions
-#define SERVO_PIN 9
-#define LED_GREEN_PIN 10
-#define LED_RED_PIN 11
-#define BUZZER_PIN 12
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+Servo sVao, sRa;
 
-// Servo positions
-#define BARRIER_OPEN_ANGLE 90
-#define BARRIER_CLOSED_ANGLE 0
+const int GATE_DOWN = 180;  // Goc dong
+const int GATE_UP   = 70;   // Goc mo
+const int buzzer    = 10;
+const int threshold = 10;   // cm — nguong phat hien xe
 
-Servo barrierServo;
-String inputString = "";
-bool stringComplete = false;
-String currentStatus = "CLOSED";
+// Entry Lane (A) — HC-SR04
+const int trigInA = 2, echoInA = 3;
+const int trigOutA = 4, echoOutA = 5;
+
+// Exit Lane (B) — HC-SR04
+const int trigInB = 12; const int echoInB = A0;
+const int trigOutB = 8;  const int echoOutB = 11;
+
+bool vaoOpen = false;
+bool raOpen  = false;
 
 void setup() {
-    Serial.begin(9600);
-    inputString.reserve(50);
-    
-    barrierServo.attach(SERVO_PIN);
-    barrierServo.write(BARRIER_CLOSED_ANGLE);
-    
-    pinMode(LED_GREEN_PIN, OUTPUT);
-    pinMode(LED_RED_PIN, OUTPUT);
-    pinMode(BUZZER_PIN, OUTPUT);
-    
-    // Initial state
-    digitalWrite(LED_GREEN_PIN, LOW);
-    digitalWrite(LED_RED_PIN, HIGH);
-    
-    Serial.println("OK:CLOSED");
+  Serial.begin(9600);
+  lcd.init(); lcd.backlight();
+  sVao.attach(6);
+  sRa.attach(7);
+  pinMode(buzzer, OUTPUT);
+  sVao.write(GATE_DOWN);
+  sRa.write(GATE_DOWN);
+  lcd.print("BKEzPass Group 8");
+  lcd.setCursor(0, 1); lcd.print("System Ready");
+  delay(2000); resetLCD();
 }
 
 void loop() {
-    if (stringComplete) {
-        processCommand(inputString);
-        inputString = "";
-        stringComplete = false;
+  // 1. NHAN LENH TU PYTHON
+  if (Serial.available() > 0) {
+    String input = Serial.readStringUntil('\n');
+    input.trim();
+    int sep = input.indexOf(':');
+    if (sep != -1 && input.substring(0, sep) == "ENTRY_GO") {
+      String name = input.substring(sep + 1);
+      sVao.write(GATE_UP);
+      vaoOpen = true;
+      updateLCD("WELCOME,", name);
+      beep(1);
+    } else if (input == "FORCE_CLOSE") {
+      sVao.write(GATE_DOWN); sRa.write(GATE_DOWN);
+      vaoOpen = false; raOpen = false;
+      updateLCD("EMERGENCY CLOSE", "By Operator");
+      beep(3);
+    } else {
+      updateLCD("UNAUTHORIZED GUEST", "");
+      beep(1);
     }
+  }
+
+  // 2. DOC CAM BIEN
+  int dInA  = getDist(trigInA,  echoInA);
+  int dOutA = getDist(trigOutA, echoOutA);
+
+  // Xe den cong — bao Python chup anh
+  if (dInA < threshold && !vaoOpen) {
+    updateLCD("ENTRY DETECTED", "Scanning Plate...");
+    Serial.println("CAR_ARRIVED");
+    delay(1500);
+  }
+
+  // Xe qua — tu dong cong
+  if (dOutA < threshold && vaoOpen) {
+    delay(1000);
+    sVao.write(GATE_DOWN);
+    vaoOpen = false;
+    updateLCD("GATE CLOSING", "Thank You");
+    beep(2); delay(2000); resetLCD();
+  }
 }
 
-void serialEvent() {
-    while (Serial.available()) {
-        char inChar = (char)Serial.read();
-        inputString += inChar;
-        if (inChar == '\n') {
-            stringComplete = true;
-        }
-    }
+int getDist(int t, int e) {
+  pinMode(t, OUTPUT); pinMode(e, INPUT);
+  digitalWrite(t, LOW); delayMicroseconds(2);
+  digitalWrite(t, HIGH); delayMicroseconds(10);
+  digitalWrite(t, LOW);
+  long d = pulseIn(e, HIGH, 25000);
+  return (d == 0) ? 999 : d * 0.034 / 2;
 }
-
-void processCommand(String cmd) {
-    cmd.trim();
-    
-    if (cmd.startsWith("OPEN")) {
-        int duration = 5; // default 5 seconds
-        int colonIndex = cmd.indexOf(':');
-        if (colonIndex > 0) {
-            duration = cmd.substring(colonIndex + 1).toInt();
-        }
-        openBarrier(duration);
-    }
-    else if (cmd == "CLOSE") {
-        closeBarrier();
-    }
-    else if (cmd == "STATUS") {
-        Serial.println("OK:" + currentStatus);
-    }
-    else if (cmd == "LED_G") {
-        digitalWrite(LED_GREEN_PIN, HIGH);
-        digitalWrite(LED_RED_PIN, LOW);
-        Serial.println("OK:" + currentStatus);
-    }
-    else if (cmd == "LED_R") {
-        digitalWrite(LED_GREEN_PIN, LOW);
-        digitalWrite(LED_RED_PIN, HIGH);
-        Serial.println("OK:" + currentStatus);
-    }
-    else if (cmd == "BUZZ_ON") {
-        tone(BUZZER_PIN, 1000, 500);
-        Serial.println("OK:" + currentStatus);
-    }
-    else if (cmd == "BUZZ_OFF") {
-        noTone(BUZZER_PIN);
-        Serial.println("OK:" + currentStatus);
-    }
-    else if (cmd == "HB") {
-        Serial.println("OK:" + currentStatus);
-    }
-    else {
-        Serial.println("ERR:Unknown command");
-    }
+void beep(int n) {
+  for(int i=0;i<n;i++){digitalWrite(buzzer,HIGH);delay(100);digitalWrite(buzzer,LOW);delay(100);}
 }
-
-void openBarrier(int durationSeconds) {
-    currentStatus = "MOVING";
-    Serial.println("OK:MOVING");
-    
-    barrierServo.write(BARRIER_OPEN_ANGLE);
-    delay(500);
-    
-    currentStatus = "OPEN";
-    Serial.println("OK:OPEN");
-    
-    // Auto-close after duration
-    delay(durationSeconds * 1000);
-    closeBarrier();
+void updateLCD(String l1, String l2) {
+  lcd.clear(); lcd.print(l1); lcd.setCursor(0,1); lcd.print(l2);
 }
-
-void closeBarrier() {
-    currentStatus = "MOVING";
-    barrierServo.write(BARRIER_CLOSED_ANGLE);
-    delay(500);
-    
-    currentStatus = "CLOSED";
-    Serial.println("OK:CLOSED");
-    
-    // Reset LEDs
-    digitalWrite(LED_GREEN_PIN, LOW);
-    digitalWrite(LED_RED_PIN, HIGH);
-}
+void resetLCD() { lcd.clear(); lcd.print("Ready to Respond"); }
 ```
 
-### 7.5 Integration với Backend
+**Hardware pin mapping:**
 
-Backend gửi command đến IoT Gateway qua HTTP:
+| Component | Arduino Pin |
+|-----------|-------------|
+| Servo Vào (Entry gate) | D6 |
+| Servo Ra (Exit gate) | D7 |
+| HC-SR04 Entry Trig/Echo | D2 / D3 |
+| HC-SR04 Auto-close Trig/Echo | D4 / D5 |
+| Buzzer | D10 |
+| LCD I2C SDA/SCL | A4 / A5 |
 
-```javascript
-// backend/src/services/iot.service.js
-const axios = require('axios');
 
-const IOT_GATEWAY_URL = process.env.IOT_GATEWAY_URL || 'http://localhost:8080';
-
-const sendGateCommand = async ({ action, gateId, logId, plateText, accessType, duration }) => {
-    try {
-        const response = await axios.post(`${IOT_GATEWAY_URL}/api/v1/command`, {
-            action,
-            gate_id: gateId,
-            log_id: logId,
-            plate_text: plateText,
-            access_type: accessType,
-            duration
-        }, {
-            timeout: 5000
-        });
-        
-        return response.data;
-    } catch (error) {
-        console.error('IoT Gateway error:', error.message);
-        throw error;
-    }
-};
-
-module.exports = { sendGateCommand };
-```
 
 ---
 
