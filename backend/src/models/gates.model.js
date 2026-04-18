@@ -115,6 +115,16 @@ const processCheckIn = async ({ laneId, plateText, confidenceScore, imageBase64 
         let ownerInfo = null;
 
         if (vehicle) {
+            // Luôn set ownerInfo khi tìm được vehicle (dù có bị từ chối hay không)
+            ownerInfo = {
+                type: 'resident',
+                name: vehicle.owner_name,
+                phone: vehicle.owner_phone,
+                address: vehicle.owner_address,
+                zone_name: vehicle.zone_name,
+                vehicle_type: vehicle.vehicle_type,
+            };
+
             // Anti-passback: inbound khi đã ở trong, hoặc outbound khi chưa ở trong → từ chối
             if (lane.direction === 'inbound' && vehicle.is_inside) {
                 denyReason = 'Anti-passback: xe đang ở trong khu';
@@ -125,14 +135,6 @@ const processCheckIn = async ({ laneId, plateText, confidenceScore, imageBase64 
             } else {
                 isAccessGranted = true;
                 accessType = 'resident';
-                ownerInfo = {
-                    type: 'resident',
-                    name: vehicle.owner_name,
-                    phone: vehicle.owner_phone,
-                    address: vehicle.owner_address,
-                    zone_name: vehicle.zone_name,
-                    vehicle_type: vehicle.vehicle_type,
-                };
             }
         } else {
             guestRegistration = await checkGuestWhitelist(plateText);

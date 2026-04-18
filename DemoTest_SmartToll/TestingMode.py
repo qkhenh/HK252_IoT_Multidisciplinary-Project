@@ -114,6 +114,7 @@ def process_and_authorize(frame, current_plate=""):
             raw_name = owner_info.get("name", "Khách lạ")
             clean_name = strip_accents(raw_name)
             v_type = owner_info.get("vehicle_type", "")
+            access_type = data.get("access_type", "unknown")
 
             # Nháy dữ liệu lên Frontend
             status = 'success' if action == 'OPEN' else 'fail'
@@ -123,7 +124,8 @@ def process_and_authorize(frame, current_plate=""):
                     'plate': plate_text,
                     'captured_image': img_base64,
                     'owner_name': raw_name,
-                    'vehicle_type': v_type
+                    'vehicle_type': v_type,
+                    'access_type': access_type,
                 })
 
             # Bắn lệnh xuống Mạch Arduino

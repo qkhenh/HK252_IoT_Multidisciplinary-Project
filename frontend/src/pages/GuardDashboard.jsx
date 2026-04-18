@@ -13,6 +13,7 @@ const GuardDashboard = () => {
   
   const [ownerName, setOwnerName] = useState('');
   const [vehicleType, setVehicleType] = useState('');
+  const [accessType, setAccessType] = useState('');
 
   const [currentTime, setCurrentTime] = useState('');
   useEffect(() => {
@@ -34,6 +35,7 @@ const GuardDashboard = () => {
         setPlateNumber(data.plate);
         setScanResult(data.status);
         setCapturedImage(data.captured_image);
+        setAccessType(data.access_type || '');
         
         // Lấy dữ liệu THẬT 100% từ Database (thông qua Python)
         const fetchedName = data.owner_name;
@@ -183,6 +185,11 @@ const GuardDashboard = () => {
                   <>
                     <p className="text-5xl font-black text-[#005B9F] tracking-tight">GATE OPEN</p>
                     <p className="text-green-600 font-bold mt-1 text-lg">Action Authorized</p>
+                  </>
+                ) : accessType === 'anti_passback' ? (
+                  <>
+                    <p className="text-4xl font-black text-orange-500 tracking-tight">ANTI-PASSBACK</p>
+                    <p className="text-orange-600 font-bold mt-1 text-lg">Xe đang trong khu / chưa vào</p>
                   </>
                 ) : (
                   <>
