@@ -56,7 +56,6 @@ void loop() {
       vaoOpen = true;
       manualOverride = true; // Kích hoạt cờ chặn cảm biến
       updateLCD("EMERGENCY OPENED", "INBOUND GATE");
-      beep(1);
     }
     // LUỒNG 3: MỞ THỦ CÔNG CỔNG RA (OUTBOUND)
     else if (cmd == "MANUAL_OPEN_OUT") {
@@ -64,7 +63,6 @@ void loop() {
       raOpen = true;
       manualOverride = true; // Kích hoạt cờ chặn cảm biến
       updateLCD("EMERGENCY OPENED", "OUTBOUND GATE");
-      beep(1);
     }
     // LUỒNG 4: ĐÓNG CỔNG THỦ CÔNG
     else if (cmd == "FORCE_CLOSE") {
@@ -74,7 +72,6 @@ void loop() {
       raOpen = false;
       manualOverride = false; // Mở khóa cho cảm biến siêu âm hoạt động lại
       updateLCD("EMERGENCY CLOSED", "By Operator");
-      beep(3);
       delay(2000);
       resetLCD();
     }
@@ -95,7 +92,7 @@ void loop() {
       
       // Hú còi cảnh báo dồn dập trong đúng 10 giây (20 chu kỳ x 0.5s)
       // Trong 10 giây này hệ thống sẽ bị "đóng băng" để an ninh can thiệp
-      for(int i = 0; i < 20; i++) { 
+      for(int i = 0; i < 5; i++) { 
         digitalWrite(buzzer, HIGH); 
         delay(250);
         digitalWrite(buzzer, LOW);  
