@@ -5,107 +5,132 @@
 LiquidCrystal_I2C lcd(0x27, 16, 2); 
 Servo sVao, sRa;
 
-// --- ANGLE CONFIGURATION ---
-const int GATE_DOWN = 180; // Closed position
-const int GATE_UP   = 70;  // Open position
-
-// Hardware Pins
+const int GATE_DOWN = 180;
+const int GATE_UP   = 70;  
 const int buzzer = 10;
 const int threshold = 10; 
 
-// Entry Lane (A)
+// Cảm biến
 const int trigInA = 2;  const int echoInA = 3; 
 const int trigOutA = 4; const int echoOutA = 5;
 
-// Exit Lane (B)
-const int trigInB = 12; const int echoInB = A0; 
-const int trigOutB = 8;  const int echoOutB = 11;
-
-// State Variables
+// Trạng thái hệ thống
 bool vaoOpen = false;
 bool raOpen = false;
+bool manualOverride = false; // Cờ an toàn: Ngăn cảm biến tự đóng cửa
 
 void setup() {
   Serial.begin(9600);
   lcd.init(); lcd.backlight();
-  
   sVao.attach(6);
   sRa.attach(7);
   pinMode(buzzer, OUTPUT);
-  
   sVao.write(GATE_DOWN);
   sRa.write(GATE_DOWN);
-  
-  lcd.print("BKEzPass Group 8");
-  lcd.setCursor(0, 1);
-  lcd.print("System Ready");
+  updateLCD("BKEzPass Group 8", "System Ready");
   delay(2000);
   resetLCD();
 }
 
 void loop() {
-  // --- NEW: LISTEN FOR COMMANDS FROM PYTHON ---
+  // --- 1. NHẬN LỆNH TỪ PYTHON ---
   if (Serial.available() > 0) {
     String input = Serial.readStringUntil('\n');
     input.trim();
 
-    // Check for "ENTRY_GO:Name"
     int separator = input.indexOf(':');
-    if (separator != -1 && input.substring(0, separator) == "ENTRY_GO") {
-      String residentName = input.substring(separator + 1);
-      
-      sVao.write(GATE_UP); // Open the gate (Angle 70)
+    String cmd = (separator != -1) ? input.substring(0, separator) : input;
+    String payload = (separator != -1) ? input.substring(separator + 1) : "";
+
+    // LUỒNG 1: QUÉT AI TỰ ĐỘNG (Phải đúng chữ ENTRY_GO)
+    if (cmd == "ENTRY_GO") {
+      sVao.write(GATE_UP);
       vaoOpen = true;
-      updateLCD("WELCOME,", residentName); // Display name from Backend
+      manualOverride = false; // Hủy cờ thủ công nếu có
+      updateLCD("WELCOME,", payload);
       beep(1);
     }
-
-    else if (input == "FORCE_CLOSE") 
-    {
+    // LUỒNG 2: MỞ THỦ CÔNG CỔNG VÀO (INBOUND)
+    else if (cmd == "MANUAL_OPEN_IN") {
+      sVao.write(GATE_UP);
+      vaoOpen = true;
+      manualOverride = true; // Kích hoạt cờ chặn cảm biến
+      updateLCD("EMERGENCY OPENED", "INBOUND GATE");
+    }
+    // LUỒNG 3: MỞ THỦ CÔNG CỔNG RA (OUTBOUND)
+    else if (cmd == "MANUAL_OPEN_OUT") {
+      sRa.write(GATE_UP);
+      raOpen = true;
+      manualOverride = true; // Kích hoạt cờ chặn cảm biến
+      updateLCD("EMERGENCY OPENED", "OUTBOUND GATE");
+    }
+    // LUỒNG 4: ĐÓNG CỔNG THỦ CÔNG
+    else if (cmd == "FORCE_CLOSE") {
       sVao.write(GATE_DOWN);
       sRa.write(GATE_DOWN);
       vaoOpen = false;
       raOpen = false;
-
-      updateLCD("EMERGENCY CLOSE", "By Operator");
-      beep(3);
+      manualOverride = false; // Mở khóa cho cảm biến siêu âm hoạt động lại
+      updateLCD("EMERGENCY CLOSED", "By Operator");
+      delay(2000);
+      resetLCD();
     }
-    
-    else {
-      updateLCD("UNAUTHORIZED GUEST", ""); // Display name from Backend
+    // LUỒNG 5: TỪ CHỐI XE (AI báo sai / Biển cấm)
+    else if (cmd == "DENY_PLATE") {
+      updateLCD("UNAUTHORIZED", payload);
       beep(1);
+    }
+    // LUỒNG 6: BÁO ĐỘNG ANTI-PASSBACK (QUAY VÒNG BIỂN SỐ)
+    else if (cmd == "ALARM_FAKE") {
+      // Đảm bảo cửa đóng chặt
+      sVao.write(GATE_DOWN);
+      sRa.write(GATE_DOWN);
+      vaoOpen = false;
+      raOpen = false;
+      
+      updateLCD("ANTI-PASSBACK!", "WARNING: " + payload);
+      
+      // Hú còi cảnh báo dồn dập trong đúng 10 giây (20 chu kỳ x 0.5s)
+      // Trong 10 giây này hệ thống sẽ bị "đóng băng" để an ninh can thiệp
+      for(int i = 0; i < 5; i++) { 
+        digitalWrite(buzzer, HIGH); 
+        delay(250);
+        digitalWrite(buzzer, LOW);  
+        delay(250);
+      }
+      resetLCD(); // Hú xong thì reset màn hình
     }
   }
 
-  // --- 2. SCAN SENSORS ---
+  // --- 2. XỬ LÝ CẢM BIẾN SIÊU ÂM ---
   int dInA = getDist(trigInA, echoInA);
   int dOutA = getDist(trigOutA, echoOutA);
 
-  // --- 3. ENTRY LOGIC (HYBRID) ---
-  // If car is at the gate but NOT yet authorized by AI
+  // Phát hiện xe chờ ở cổng (Gửi cho Python)
   if (dInA < threshold && !vaoOpen) {
     updateLCD("ENTRY DETECTED", "Scanning Plate...");
-    Serial.println("CAR_ARRIVED"); // BẮN TÍN HIỆU CHO PYTHON CHỤP ẢNH!
-    delay(1500); // Nghỉ 1.5s để không spam tín hiệu
+    Serial.println("CAR_ARRIVED"); 
+    delay(1500); 
   }
 
-  // If gate is open and car has passed the EXIT sensor (OutA)
-  if (dOutA < threshold && vaoOpen) {
-    delay(1000); 
-    sVao.write(GATE_DOWN);
-    vaoOpen = false;
-    updateLCD("GATE CLOSING", "Thank You");
-    beep(2);
-    delay(2000);
-    resetLCD();
+  // TỰ ĐỘNG ĐÓNG CỔNG - Chỉ chạy nếu KHÔNG BỊ KHÓA bởi Manual Mode
+  if (!manualOverride) {
+    if (dOutA < threshold && vaoOpen) {
+      delay(1000); 
+      sVao.write(GATE_DOWN);
+      vaoOpen = false;
+      updateLCD("GATE CLOSING", "Thank You");
+      beep(2);
+      delay(2000);
+      resetLCD();
+    }
   }
 }
 
-// Stable Distance Function
+// --- Các hàm phụ trợ (Giữ nguyên của bạn) ---
 int getDist(int t, int e) {
-  pinMode(t, OUTPUT);
-  pinMode(e, INPUT);
-  digitalWrite(t, LOW);  delayMicroseconds(2);
+  pinMode(t, OUTPUT); pinMode(e, INPUT);
+  digitalWrite(t, LOW); delayMicroseconds(2);
   digitalWrite(t, HIGH); delayMicroseconds(10);
   digitalWrite(t, LOW);
   long duration = pulseIn(e, HIGH, 25000); 
@@ -121,13 +146,9 @@ void beep(int t) {
 }
 
 void updateLCD(String line1, String line2) {
-  lcd.clear();
-  lcd.print(line1);
-  lcd.setCursor(0, 1);
-  lcd.print(line2);
+  lcd.clear(); lcd.print(line1); lcd.setCursor(0, 1); lcd.print(line2);
 }
 
 void resetLCD() {
-  lcd.clear();
-  lcd.print("Ready to Respond");
+  lcd.clear(); lcd.print("Ready to Respond");
 }
