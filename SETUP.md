@@ -27,7 +27,7 @@ docker ps
 2. Điền thông tin kết nối ở trên → **Test Connection** → **Finish**
 3. Mở SQL Editor (F3) → Paste nội dung file `database/db.sql` → Execute (Ctrl+Enter)
 
-**Hoặc bằng command:**
+**Hoặc bằng command (Từ thư mục gốc dự án):**
 ```powershell
 docker cp database/db.sql iot_project_db_252:/tmp/db.sql
 docker exec -it iot_project_db_252 psql -U admin -d iot_main_db_252 -f /tmp/db.sql
@@ -64,11 +64,29 @@ node src/scripts/seed.js
 npm start
 ```
 
+> **Lưu ý:** Lệnh `npm start` sẽ chạy server và treo terminal. Vui lòng **mở một cửa sổ Terminal mới** để thực hiện các bước tiếp theo.
+
 ---
 
-## 4. Test
+## 4. Chạy Frontend
 
+**Mở Terminal mới (Từ thư mục gốc dự án):**
 ```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+> **Lưu ý:** Lệnh này cũng sẽ treo terminal. Trang web sẽ chạy tại địa chỉ `http://localhost:5173`. Để chạy script Test bên dưới, bạn cần **mở thêm một cửa sổ Terminal mới**.
+
+---
+
+## 5. Test
+
+**Mở Terminal mới (Từ thư mục gốc dự án):**
+```powershell
+cd backend
+
 # Health check
 Invoke-RestMethod http://localhost:5000/api/v1/health
 
@@ -82,11 +100,16 @@ Invoke-RestMethod http://localhost:5000/api/v1/health
 
 ## Reset Database
 
+**(Chạy ở thư mục gốc của dự án)**
 ```powershell
+# Chuyển về thư mục gốc nếu bạn đang ở backend
+# cd .. 
+
 docker-compose down -v
 docker-compose up -d
 Start-Sleep 5
 docker cp database/db.sql iot_project_db_252:/tmp/db.sql
 docker exec -it iot_project_db_252 psql -U admin -d iot_main_db_252 -f /tmp/db.sql
-cd backend; node src/scripts/seed.js
+cd backend
+node src/scripts/seed.js
 ```
