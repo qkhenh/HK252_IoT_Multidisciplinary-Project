@@ -126,6 +126,25 @@ Test-Endpoint -Name "Get Active OTP" -Method GET -Url "$BaseUrl/citizens/tokens"
 Test-Endpoint -Name "Get My Vehicles" -Method GET -Url "$BaseUrl/citizens/vehicles" -Headers $ch `
     -Validation { param($r) $r.success -and $r.data -is [array] }
 
+$rnd = Get-Random -Minimum 10000 -Maximum 99999
+$plate = "59A-$rnd"
+$plate2 = "60A-$rnd"
+
+$newVehicle = Test-Endpoint -Name "Register Vehicle" -Method POST -Url "$BaseUrl/citizens/vehicles" -Headers $ch `
+    -Body "{`"vehicle_type`":`"motorbike`", `"license_plate`":`"$plate`", `"vehicle_color`":`"red`"}" `
+    -Validation { param($r) $r.success -and $r.data.vehicle_id -ne $null }
+
+if ($newVehicle) {
+    $vId = $newVehicle.data.vehicle_id
+    
+    Test-Endpoint -Name "Edit Vehicle" -Method PUT -Url "$BaseUrl/citizens/vehicles/$vId" -Headers $ch `
+        -Body "{`"vehicle_type`":`"motorbike`", `"license_plate`":`"$plate2`", `"vehicle_color`":`"blue`"}" `
+        -Validation { param($r) $r.success -and $r.data.license_plate -eq $plate2 }
+        
+    Test-Endpoint -Name "Delete Vehicle" -Method DELETE -Url "$BaseUrl/citizens/vehicles/$vId" -Headers $ch `
+        -Validation { param($r) $r.success }
+}
+
 # Vehicle Types
 Test-Endpoint -Name "Get Vehicle Types" -Method GET -Url "$BaseUrl/citizens/vehicle-types" -Headers $ch `
     -Validation { param($r) $r.success -and $r.data -is [array] }

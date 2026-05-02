@@ -312,14 +312,14 @@ Các khu dân cư/chung cư hiện đại đối mặt với thách thức:
 | Attribute | Description |
 |-----------|-------------|
 | **Actor** | Citizen |
-| **Description** | Citizen xem, thêm, sửa thông tin phương tiện cá nhân |
+| **Description** | Citizen xem, thêm, sửa, xóa thông tin phương tiện cá nhân |
 | **Precondition** | Citizen đã đăng nhập |
-| **Postcondition** | Xe được thêm hoặc sửa (sau khi sửa, is_active bị reset về false chờ duyệt) |
+| **Postcondition** | Xe được thêm, sửa (sau khi sửa, is_active bị reset về false chờ duyệt), hoặc bị xóa khỏi hệ thống |
 
 **Main Flow:**
 1. Citizen truy cập trang "My Vehicles"
 2. Hệ thống hiển thị danh sách xe hiện có
-3. Citizen chọn "Thêm xe mới" hoặc "Sửa xe"
+3. Citizen chọn "Thêm xe mới", "Sửa xe", hoặc "Xóa xe"
 4. Citizen nhập/sửa: Biển số, Loại xe, Màu sắc
 5. Hệ thống validate biển số (format, trùng lặp với xe khác)
 6. Hệ thống lưu xe với `is_active = false` (chờ duyệt)
