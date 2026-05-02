@@ -100,6 +100,26 @@ const startServer = async () => {
         console.log(`📋 Health check: http://localhost:${PORT}/api/v1/health`);
     });
 
+    // Background job: Tự động dọn dẹp khách đăng ký không tới sau khi quá hạn
+    setInterval(async () => {
+        try {
+            const client = await require('./libs/db').getClient();
+            // Xóa khách được đăng ký nhưng không tới (quá thời gian kết thúc)
+            // Khách đã tới (checked_in) sẽ không bị xóa cho đến khi họ đi ra.
+            const result = await client.query(`
+                DELETE FROM guest_registrations 
+                WHERE status = 'approved' 
+                AND visit_end_time < NOW()
+            `);
+            if (result.rowCount > 0) {
+                console.log(`🧹 Đã dọn dẹp ${result.rowCount} đăng ký khách quá hạn nhưng không tới.`);
+            }
+            client.release();
+        } catch (err) {
+            console.error('❌ Lỗi khi dọn dẹp database:', err);
+        }
+    }, 60 * 60 * 1000); // Chạy mỗi 1 giờ
+
     // Graceful Shutdown
     const shutdown = async (signal) => {
         console.log(`\n${signal} received. Đang tắt server...`);

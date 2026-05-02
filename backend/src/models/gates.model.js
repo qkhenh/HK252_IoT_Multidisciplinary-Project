@@ -53,9 +53,11 @@ const checkGuestWhitelist = async (plateText) => {
         JOIN users u ON gr.host_user_id = u.user_id
         JOIN citizens c ON gr.host_user_id = c.user_id
         WHERE UPPER(REPLACE(gr.guest_license_plate, '.', '')) = UPPER(REPLACE($1, '.', ''))
-          AND gr.status = 'approved'
-          AND gr.visit_start_time <= NOW()
-          AND gr.visit_end_time >= NOW()
+          AND (
+              (gr.status = 'approved' AND gr.visit_start_time <= NOW() AND gr.visit_end_time >= NOW())
+              OR 
+              (gr.status = 'checked_in')
+          )
         LIMIT 1
     `, [plateText]);
     return result.rows.length > 0 ? result.rows[0] : null;
@@ -139,15 +141,21 @@ const processCheckIn = async ({ laneId, plateText, confidenceScore, imageBase64 
         } else {
             guestRegistration = await checkGuestWhitelist(plateText);
             if (guestRegistration) {
-                isAccessGranted = true;
-                accessType = 'guest';
-                ownerInfo = {
-                    type: 'guest',
-                    guest_name: guestRegistration.guest_name,
-                    host_name: guestRegistration.host_name,
-                    host_phone: guestRegistration.host_phone,
-                    host_address: guestRegistration.host_address,
-                };
+                if (lane.direction === 'inbound' && guestRegistration.status === 'checked_in') {
+                    denyReason = 'Khách đã check-in và đang ở trong khu';
+                } else if (lane.direction === 'outbound' && guestRegistration.status === 'approved') {
+                    denyReason = 'Khách chưa check-in vào khu';
+                } else {
+                    isAccessGranted = true;
+                    accessType = 'guest';
+                    ownerInfo = {
+                        type: 'guest',
+                        guest_name: guestRegistration.guest_name,
+                        host_name: guestRegistration.host_name,
+                        host_phone: guestRegistration.host_phone,
+                        host_address: guestRegistration.host_address,
+                    };
+                }
             }
         }
 
@@ -177,6 +185,18 @@ const processCheckIn = async ({ laneId, plateText, confidenceScore, imageBase64 
                 `UPDATE vehicles SET is_inside = $1, last_log_time = NOW() WHERE vehicle_id = $2`,
                 [newIsInside, vehicle.vehicle_id]
             );
+        } else if (isAccessGranted && guestRegistration) {
+            if (lane.direction === 'inbound') {
+                await client.query(
+                    `UPDATE guest_registrations SET status = 'checked_in' WHERE registration_id = $1`,
+                    [guestRegistration.registration_id]
+                );
+            } else if (lane.direction === 'outbound') {
+                await client.query(
+                    `DELETE FROM guest_registrations WHERE registration_id = $1`,
+                    [guestRegistration.registration_id]
+                );
+            }
         }
 
         await client.query('COMMIT');

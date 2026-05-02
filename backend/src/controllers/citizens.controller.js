@@ -133,13 +133,13 @@ const getVehicleTypes = async (req, res, next) => {
  */
 const registerVehicle = async (req, res, next) => {
     try {
-        const { type_id, license_plate, vehicle_color, vehicle_image_url } = req.body;
+        const { vehicle_type, license_plate, vehicle_color, vehicle_image_url } = req.body;
         
         // Validate
-        if (!type_id || !license_plate) {
+        if (!vehicle_type || !license_plate) {
             return res.status(400).json({
                 success: false,
-                message: 'Thiếu thông tin: type_id và license_plate là bắt buộc',
+                message: 'Thiếu thông tin: vehicle_type và license_plate là bắt buộc',
             });
         }
         
@@ -166,7 +166,7 @@ const registerVehicle = async (req, res, next) => {
         // Register vehicle
         const vehicle = await citizensModel.registerVehicle({
             ownerId: req.user.user_id,
-            vehicleType: type_id,  // type_id chứa vehicle_type string (car, motorbike...)
+            vehicleType: vehicle_type,
             licensePlate: license_plate,
             vehicleColor: vehicle_color || null,
         });
@@ -253,7 +253,7 @@ const registerGuest = async (req, res, next) => {
         const { 
             guest_name, 
             guest_license_plate, 
-            vehicle_type_id,
+            vehicle_type,
             visit_start_time, 
             visit_end_time,
             purpose 
@@ -305,7 +305,7 @@ const registerGuest = async (req, res, next) => {
             hostId: req.user.user_id,
             guestName: guest_name,
             guestLicensePlate: guest_license_plate,
-            vehicleType: vehicle_type_id || 'car',
+            vehicleType: vehicle_type || 'car',
             visitStartTime: visit_start_time,
             visitEndTime: visit_end_time,
         });
