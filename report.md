@@ -1,4 +1,4 @@
-﻿# BÁO CÁO DỰ ÁN: HỆ THỐNG KIỂM SOÁT RA VÀO THÔNG MINH
+# BÁO CÁO DỰ ÁN: HỆ THỐNG KIỂM SOÁT RA VÀO THÔNG MINH
 # (SMART TOLL GATE - IoT Multidisciplinary Project)
 
 **Mã môn học:** HK252 - Đa ngành IoT  
@@ -312,16 +312,16 @@ Các khu dân cư/chung cư hiện đại đối mặt với thách thức:
 | Attribute | Description |
 |-----------|-------------|
 | **Actor** | Citizen |
-| **Description** | Citizen xem, thêm phương tiện vào whitelist cá nhân |
+| **Description** | Citizen xem, thêm, sửa thông tin phương tiện cá nhân |
 | **Precondition** | Citizen đã đăng nhập |
-| **Postcondition** | Xe được thêm vào hệ thống chờ duyệt |
+| **Postcondition** | Xe được thêm hoặc sửa (sau khi sửa, is_active bị reset về false chờ duyệt) |
 
 **Main Flow:**
 1. Citizen truy cập trang "My Vehicles"
 2. Hệ thống hiển thị danh sách xe hiện có
-3. Citizen chọn "Thêm xe mới"
-4. Citizen nhập: Biển số, Loại xe, Màu sắc, Ảnh (optional)
-5. Hệ thống validate biển số (format, trùng lặp)
+3. Citizen chọn "Thêm xe mới" hoặc "Sửa xe"
+4. Citizen nhập/sửa: Biển số, Loại xe, Màu sắc
+5. Hệ thống validate biển số (format, trùng lặp với xe khác)
 6. Hệ thống lưu xe với `is_active = false` (chờ duyệt)
 7. Thông báo thành công cho Citizen
 

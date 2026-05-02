@@ -183,6 +183,68 @@ const registerVehicle = async (req, res, next) => {
 };
 
 /**
+ * Cập nhật thông tin xe cá nhân
+ * PUT /api/v1/citizens/vehicles/:vehicleId
+ */
+const editVehicle = async (req, res, next) => {
+    try {
+        const { vehicleId } = req.params;
+        const { vehicle_type, license_plate, vehicle_color } = req.body;
+        
+        if (!vehicle_type || !license_plate) {
+            return res.status(400).json({
+                success: false,
+                message: 'Thiếu thông tin: vehicle_type và license_plate là bắt buộc',
+            });
+        }
+        
+        // Validate license plate format
+        const cleanPlate = license_plate.replace(/[\s.-]/g, '');
+        const plateRegex = /^[0-9]{2}[A-Z]{1,2}[0-9]{4,6}$/i;
+        if (!plateRegex.test(cleanPlate) || cleanPlate.length < 7 || cleanPlate.length > 10) {
+            return res.status(400).json({
+                success: false,
+                message: 'Biển số xe không đúng định dạng',
+            });
+        }
+        
+        // Check if plate already exists for ANOTHER vehicle
+        const existingPlate = await citizensModel.checkLicensePlateExists(license_plate);
+        if (existingPlate && existingPlate.vehicle_id !== parseInt(vehicleId, 10)) {
+            return res.status(409).json({
+                success: false,
+                message: 'Biển số xe này đã được đăng ký cho xe khác trong hệ thống',
+            });
+        }
+        
+        // Update vehicle
+        const updatedVehicle = await citizensModel.updateVehicleInfo({
+            vehicleId: parseInt(vehicleId, 10),
+            ownerId: req.user.user_id,
+            vehicleType: vehicle_type,
+            licensePlate: license_plate,
+            vehicleColor: vehicle_color || null
+        });
+        
+        if (!updatedVehicle) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy xe hoặc bạn không có quyền chỉnh sửa',
+            });
+        }
+        
+        res.status(200).json({
+            success: true,
+            message: 'Cập nhật thông tin xe thành công, xe cần chờ Quản lý duyệt lại.',
+            data: updatedVehicle,
+        });
+        
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
  * Cập nhật trạng thái xe (active/inactive)
  * PATCH /api/v1/citizens/vehicles/:vehicleId
  */
@@ -385,6 +447,7 @@ module.exports = {
     getMyVehicles,
     getVehicleTypes,
     registerVehicle,
+    editVehicle,
     updateVehicleStatus,
     // Guests
     getMyGuests,

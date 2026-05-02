@@ -140,6 +140,37 @@ Lấy danh mục loại xe hợp lệ (enum reference).
 
 ---
 
+#### ✅ PUT `/api/v1/citizens/vehicles/:vehicleId`
+Cập nhật thông tin phương tiện. Sau khi cập nhật thành công, trạng thái sẽ tự động reset về `is_active = false` để Manager duyệt lại.
+
+**Request Body:**
+```json
+{
+  "license_plate": "51A-67890",
+  "vehicle_type": "car",
+  "vehicle_color": "Đen"
+}
+```
+
+**Response 200:**
+```json
+{
+  "success": true,
+  "message": "Cập nhật thông tin xe thành công, xe cần chờ Quản lý duyệt lại.",
+  "data": {
+    "vehicle_id": "uuid",
+    "license_plate": "51A-67890",
+    "vehicle_type": "car",
+    "vehicle_color": "Đen",
+    "is_active": false
+  }
+}
+```
+
+**Response 409:** `{ "error": "Biển số xe này đã được đăng ký cho xe khác trong hệ thống" }`
+
+---
+
 #### ✅ PATCH `/api/v1/citizens/vehicles/:vehicleId`
 Cập nhật trạng thái xe (`active` / `inactive`).
 

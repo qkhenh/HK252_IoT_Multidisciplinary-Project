@@ -290,8 +290,7 @@ The following diagram illustrates the Smart Toll Gate System in its real-world c
     \item \textbf{Citizens (Residents):} House owners who register vehicles, manage guests, and generate OTP codes.
     \item \textbf{Security Guards:} Personnel who monitor the dashboard and perform manual verifications.
     \item \textbf{Managers:} Administrators who approve registrations and view analytics.
-    \item \textbf{IP Camera:} Hardware device that captures vehicle images at the gate, which also reads ePass-style QR codes directly via software libraries.
-    \item \textbf{QR Scanner:} 1-way physical scanner placed at a low level for residents (pedestrians/cyclists) to scan their personal dynamic QR code via the Mobile App, sending data to the Backend via HTTP POST.
+    \item \textbf{IP Camera:} Hardware device that captures vehicle images at the gate, which also reads dynamic QR codes from pedestrian smartphones directly via AI OCR libraries.
     \item \textbf{Arduino + Servo Motor:} Hardware that physically controls the gate barrier.
 \end{itemize}
 
@@ -313,7 +312,7 @@ The system follows a \textbf{Three-Tier Architecture} with additional IoT and AI
     \item \textbf{Data Layer:} PostgreSQL database storing users, vehicles, access logs, and images.
     \item \textbf{AI Service:} Python-based service using YOLOv8 for plate detection and PaddleOCR for text extraction, along with QR scanning libraries for reading ePass on windshields.
     \item \textbf{IoT Gateway:} Python application bridging the backend with Arduino hardware for gate control.
-    \item \textbf{Hardware Layer:} Arduino, servo motor, IR sensors, IP camera, and a separate Hardware QR Scanner used exclusively for pedestrians/cyclists to read personal dynamic QR codes from their smartphones.
+    \item \textbf{Hardware Layer:} Arduino, servo motor, IR sensors, and IP camera.
 \end{itemize}
 
 \newpage
@@ -725,7 +724,7 @@ The system implements Role-Based Access Control to ensure proper authorization f
     \addlinespace
     Vehicle Management & \cmark (All users) & \xmark & \cmark (Own) \\
     \addlinespace
-    Guest Registration & \xmark & \xmark & \cmark (Full) \\
+    Guest Registration & \cmark (Full) & \cmark (Full) & \cmark (Full) \\
     \addlinespace
     Generate OTP Codes & \xmark & \xmark & \cmark (Own guests) \\
     \addlinespace
@@ -796,12 +795,11 @@ Modern residential areas and apartment complexes face several challenges:
     \begin{itemize}
         \item The Backend prioritizes checking if this is a resident's vehicle. It queries the Database for a vehicle where \texttt{license\_plate = AI\_plate} and \texttt{is\_active = true}.
         \item If NOT FOUND: The vehicle does not belong to a resident $\rightarrow$ Immediately move to \textbf{Step 2}.
-        \item If FOUND: The system starts the 2-layer security check:
+        \item If FOUND: The system starts the security check:
         \begin{itemize}
-            \item \textbf{QR Anti-Spoofing Check:} Does the \texttt{qr\_tag\_text} sent by the AI match the \texttt{vehicle\_qr\_tag} in the Database? (If the AI sends null or a mismatched string $\rightarrow$ Block immediately, issue a `Suspected fake vehicle'' red alert).
-            \item \textbf{Anti-Passback Check:} The system verifies the vehicle's direction (inbound) against its state in the database. If it is already \texttt{inside} $\rightarrow$ Logic error $\rightarrow$ Block immediately, alert `Vehicle already inside''.
+            \item \textbf{Anti-Passback Check:} The system verifies the vehicle's direction (inbound/outbound) against its state in the database. If it is already \texttt{is\_inside = true} and going inbound, or \texttt{is\_inside = false} and going outbound $\rightarrow$ Logic error $\rightarrow$ Block immediately, alert anti-passback violation.
         \end{itemize}
-        \item \textbf{Approval:} If all security tests pass $\rightarrow$ Change \texttt{location\_status} to \texttt{inside} $\rightarrow$ Save log $\rightarrow$ Open the gate. Flow ends.
+        \item \textbf{Approval:} If the security test passes $\rightarrow$ Toggle \texttt{is\_inside} flag $\rightarrow$ Save log $\rightarrow$ Open the gate. Flow ends.
     \end{itemize}
 
     \item[\textbf{Step 2:}] \textbf{Scan Temporary Whitelist (guest\_registrations table)}
@@ -852,8 +850,8 @@ Modern residential areas and apartment complexes face several challenges:
 \begin{enumerate}
     \item A resident goes for a walk or rides a bicycle, which does not have a license plate for AI recognition.
     \item The resident opens the Mobile App and generates a personal dynamic QR code (containing a UUID, valid for 3 minutes).
-    \item The resident places their smartphone against the Hardware QR Scanner located at a lower level at the gate.
-    \item The scanner sends the UUID string to the Backend via HTTP POST. The Backend retrieves the resident's data and verifies it $\rightarrow$ Opens the gate.
+    \item The resident holds their smartphone screen towards the AI Camera.
+    \item The AI Camera detects and decodes the QR code via OCR, sending the UUID string along with the snapshot to the Backend. The Backend verifies the token data $\rightarrow$ Opens the gate.
 \end{enumerate}
 \end{tcolorbox}
 

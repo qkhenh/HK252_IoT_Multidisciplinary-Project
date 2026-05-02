@@ -58,6 +58,13 @@ router.get('/vehicle-types', citizensController.getVehicleTypes);
 router.post('/vehicles', citizensController.registerVehicle);
 
 /**
+ * @route   PUT /api/v1/citizens/vehicles/:vehicleId
+ * @desc    Cập nhật thông tin xe cá nhân
+ * @access  Private - Citizen only
+ */
+router.put('/vehicles/:vehicleId', citizensController.editVehicle);
+
+/**
  * @route   PATCH /api/v1/citizens/vehicles/:vehicleId
  * @desc    Cập nhật trạng thái xe (active/inactive)
  * @access  Private - Citizen only

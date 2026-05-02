@@ -165,6 +165,21 @@ const registerVehicle = async ({ ownerId, vehicleType, licensePlate, vehicleColo
 };
 
 /**
+ * Cập nhật thông tin xe
+ * @param {Object} params
+ */
+const updateVehicleInfo = async ({ vehicleId, ownerId, vehicleType, licensePlate, vehicleColor }) => {
+    const result = await db.query(
+        `UPDATE vehicles
+         SET license_plate = $1, vehicle_type = $2, vehicle_color = $3, is_active = false
+         WHERE vehicle_id = $4 AND owner_user_id = $5
+         RETURNING vehicle_id, license_plate, vehicle_type, vehicle_color, is_active`,
+        [licensePlate, vehicleType, vehicleColor || null, vehicleId, ownerId]
+    );
+    return result.rows.length > 0 ? result.rows[0] : null;
+};
+
+/**
  * Cập nhật trạng thái xe
  * @param {number} vehicleId
  * @param {number} ownerId
@@ -341,6 +356,7 @@ module.exports = {
     checkLicensePlateExists,
     getVehicleTypes,
     registerVehicle,
+    updateVehicleInfo,
     updateVehicleStatus,
     // Guest Registrations
     getGuestRegistrations,
