@@ -118,6 +118,7 @@ const getVehiclesByCitizen = async (citizenId) => {
              vehicle_type,
              vehicle_color,
              is_active,
+             status,
              is_inside,
              last_log_time,
              registered_at
@@ -135,11 +136,7 @@ const getVehiclesByCitizen = async (citizenId) => {
  */
 const checkLicensePlateExists = async (licensePlate) => {
     const query = `
-<<<<<<< HEAD
         SELECT vehicle_id, owner_user_id
-=======
-        SELECT vehicle_id, owner_user_id 
->>>>>>> e3796e9d343d728d03857dedbfdee9d4b3053452
         FROM vehicles 
         WHERE UPPER(REPLACE(license_plate, '.', '')) = UPPER(REPLACE($1, '.', ''))
     `;
@@ -160,8 +157,8 @@ const getVehicleTypes = async () => {
  */
 const registerVehicle = async ({ ownerId, vehicleType, licensePlate, vehicleColor }) => {
     const result = await db.query(
-        `INSERT INTO vehicles (owner_user_id, vehicle_type, license_plate, vehicle_color, is_active)
-         VALUES ($1, $2, $3, $4, false)
+        `INSERT INTO vehicles (owner_user_id, vehicle_type, license_plate, vehicle_color, is_active, status)
+         VALUES ($1, $2, $3, $4, false, 'pending_new')
          RETURNING vehicle_id, license_plate, vehicle_type, vehicle_color, is_active, registered_at`,
         [ownerId, vehicleType, licensePlate, vehicleColor || null]
     );
@@ -173,26 +170,34 @@ const registerVehicle = async ({ ownerId, vehicleType, licensePlate, vehicleColo
  * @param {Object} params
  */
 const updateVehicleInfo = async ({ vehicleId, ownerId, vehicleType, licensePlate, vehicleColor }) => {
+    // Đóng gói thông tin mới thành JSON
+    const pendingChanges = JSON.stringify({
+        vehicle_type: vehicleType,
+        license_plate: licensePlate,
+        vehicle_color: vehicleColor || null
+    });
+
     const result = await db.query(
         `UPDATE vehicles
-         SET license_plate = $1, vehicle_type = $2, vehicle_color = $3, is_active = false
-         WHERE vehicle_id = $4 AND owner_user_id = $5
-         RETURNING vehicle_id, license_plate, vehicle_type, vehicle_color, is_active`,
-        [licensePlate, vehicleType, vehicleColor || null, vehicleId, ownerId]
+         SET is_active = false, status = 'pending_update', pending_changes = $1
+         WHERE vehicle_id = $2 AND owner_user_id = $3
+         RETURNING vehicle_id, license_plate, is_active, status`,
+        [pendingChanges, vehicleId, ownerId]
     );
     return result.rows.length > 0 ? result.rows[0] : null;
 };
 
 /**
- * Xóa xe cá nhân
+ * Yêu cầu xóa xe cá nhân (chuyển sang pending_delete)
  * @param {number} vehicleId
  * @param {number} ownerId
  */
 const deleteVehicle = async (vehicleId, ownerId) => {
     const result = await db.query(
-        `DELETE FROM vehicles
+        `UPDATE vehicles
+         SET is_active = false, status = 'pending_delete'
          WHERE vehicle_id = $1 AND owner_user_id = $2
-         RETURNING vehicle_id`,
+         RETURNING vehicle_id, license_plate, is_active, status`,
         [vehicleId, ownerId]
     );
     return result.rows.length > 0 ? result.rows[0] : null;

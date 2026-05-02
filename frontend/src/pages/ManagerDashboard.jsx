@@ -86,7 +86,7 @@ const ManagerDashboard = () => {
 
       if (response.ok) {
         setPendingVehicles(prev => (Array.isArray(prev) ? prev.filter(v => v.vehicle_id !== vehicleId) : []));
-        alert(isApproved ? '✅ Đã duyệt xe thành công!' : '❌ Đã từ chối xe.');
+        alert(isApproved ? '✅ Đã duyệt yêu cầu thành công!' : '❌ Đã từ chối yêu cầu.');
       } else {
         const errData = await response.json();
         alert(`Lỗi: ${errData.message || 'Hệ thống từ chối thao tác'}`);
@@ -198,35 +198,45 @@ const ManagerDashboard = () => {
                 ) : (
                   <div className="divide-y divide-gray-100">
                     {Array.isArray(pendingVehicles) && pendingVehicles.map((vehicle) => {
-                        const isNewRegistration = !vehicle.last_log_time || (vehicle.last_log_time === vehicle.registered_at);
+                        // Tạo biến displayData: Nếu là đang update thì lấy data nháp đè lên, nếu không thì lấy data gốc
+                        const displayData = vehicle.status === 'pending_update' && vehicle.pending_changes 
+                            ? { ...vehicle, ...vehicle.pending_changes } 
+                            : vehicle;
 
                         return (
-                            <div key={vehicle.vehicle_id || Math.random()} className="p-6 flex flex-col md:flex-row md:items-center justify-between hover:bg-gray-50 transition-colors gap-6">
+                            <div key={displayData.vehicle_id || Math.random()} className="p-6 flex flex-col md:flex-row md:items-center justify-between hover:bg-gray-50 transition-colors gap-6">
                                 
                                 <div className="flex items-start space-x-5 flex-1">
                                     <div className="bg-blue-100 text-blue-800 p-3 rounded-xl font-black text-2xl tracking-widest border-2 border-blue-200 shrink-0 min-w-[160px] text-center">
-                                        {vehicle.license_plate || 'UNKNOWN'}
+                                        {/* SỬ DỤNG displayData THAY VÌ vehicle */}
+                                        {displayData.license_plate || 'UNKNOWN'}
                                     </div>
 
                                     <div className="space-y-1">
-                                        {/* PHÂN LOẠI NHÃN HIỂN THỊ */}
+                                        {/* PHÂN LOẠI NHÃN HIỂN THỊ TRÊN MANAGER */}
                                         <div className="flex items-center space-x-2 mb-1">
-                                            {isNewRegistration ? (
+                                            {vehicle.status === 'pending_new' && (
                                                 <span className="bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 rounded-md font-bold border border-blue-200 uppercase tracking-wider">
                                                     ✨ New Registration
                                                 </span>
-                                            ) : (
+                                            )}
+                                            {vehicle.status === 'pending_update' && (
                                                 <span className="bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 rounded-md font-bold border border-amber-200 uppercase tracking-wider">
                                                     🔄 Information Update
+                                                </span>
+                                            )}
+                                            {vehicle.status === 'pending_delete' && (
+                                                <span className="bg-red-100 text-red-700 text-[10px] px-2 py-0.5 rounded-md font-bold border border-red-200 uppercase tracking-wider">
+                                                    🗑️ Delete Request
                                                 </span>
                                             )}
                                         </div>
 
                                         {/* HIỂN THỊ THÔNG TIN CHI TIẾT */}
                                         <p className="text-lg font-black text-gray-800">
-                                            <span className="text-gray-400 font-bold">Vehicle Type:</span> <span className="capitalize">{vehicle.vehicle_type || 'N/A'}</span>
+                                            <span className="text-gray-400 font-bold">Vehicle Type:</span> <span className="capitalize">{displayData.vehicle_type || 'N/A'}</span>
                                             <span className="mx-3 text-gray-300">|</span>
-                                            <span className="text-gray-400 font-bold">Color:</span> <span className="capitalize">{vehicle.vehicle_color || 'N/A'}</span>
+                                            <span className="text-gray-400 font-bold">Color:</span> <span className="capitalize">{displayData.vehicle_color || 'N/A'}</span>
                                         </p>
 
                                         <div className="flex items-center space-x-2 text-sm font-medium text-gray-600">

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CarFront, Bike, Truck, LogOut, User, Zap, Circle, Plus, Edit, X, Clock, RotateCw } from 'lucide-react';
+import { CarFront, Bike, Truck, LogOut, User, Zap, Circle, Plus, Edit, X, Clock, RotateCw, Trash2 } from 'lucide-react';
 
 const CitizenDashboard = () => {
   const navigate = useNavigate();
@@ -127,6 +127,27 @@ const CitizenDashboard = () => {
     }
   };
 
+  const handleDeleteRequest = async (vehicle) => {
+    if (!window.confirm(`Bạn có chắc chắn muốn yêu cầu xóa xe có biển số ${vehicle.license_plate} không?`)) return;
+
+    try {
+      const response = await fetch(`http://localhost:5000/api/v1/citizens/vehicles/${vehicle.vehicle_id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token') || ''}` }
+      });
+
+      if (response.ok) {
+        alert('✅ Yêu cầu xóa xe đã được gửi đến Quản lý.');
+        fetchVehicles(true); // Tải lại danh sách
+      } else {
+        const errData = await response.json();
+        alert(`❌ Lỗi: ${errData.message || 'Không thể yêu cầu xóa xe'}`);
+      }
+    } catch (error) {
+      alert('Lỗi kết nối máy chủ!');
+    }
+  };
+
   const renderVehicleIcon = (type) => {
     const safeType = type ? String(type).toLowerCase() : 'unknown';
     const iconClass = "w-16 h-16 object-contain opacity-80 group-hover:opacity-100 transition-opacity";
@@ -184,25 +205,38 @@ const CitizenDashboard = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {vehicles?.map((vehicle) => (
               <div key={vehicle.vehicle_id || Math.random()} className="bg-white rounded-2xl p-6 shadow-sm hover:shadow-xl border border-gray-100 transition-all duration-300 transform hover:-translate-y-1 group relative overflow-hidden">
-                <div className={`absolute top-0 left-0 w-full h-2 ${!vehicle.is_active ? 'bg-red-500' : vehicle.is_inside ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                <button onClick={() => handleOpenEdit(vehicle)} className="absolute top-4 right-4 p-2 text-gray-400 hover:text-[#005B9F] hover:bg-blue-50 rounded-lg transition-colors z-10">
-                  <Edit className="w-5 h-5" />
-                </button>
+                <div className="absolute top-4 right-4 flex space-x-2 z-10">
+                  <button onClick={() => handleOpenEdit(vehicle)} className="p-2 text-gray-400 hover:text-[#005B9F] hover:bg-blue-50 rounded-lg transition-colors" title="Chỉnh sửa">
+                    <Edit className="w-5 h-5" />
+                  </button>
+                  <button onClick={() => handleDeleteRequest(vehicle)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Yêu cầu xóa">
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                </div>
                 <div className="flex justify-between items-start mb-6 mt-2">
-                  <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 shadow-inner">
-                    {renderVehicleIcon(vehicle.vehicle_type)}
+                  {/* GỘP CHUNG ICON VÀ BADGE VÀO MỘT KHỐI */}
+                  <div className="flex items-center space-x-4">
+                    <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 shadow-inner">
+                      {renderVehicleIcon(vehicle.vehicle_type)}
+                    </div>
+                    
+                    {/* LOGIC HIỂN THỊ BADGE STATUS */}
+                    {vehicle.status !== 'approved' ? (
+                      <div className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-sm font-bold shadow-sm border ${vehicle.status === 'pending_delete' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-amber-50 text-amber-600 border-amber-200'}`}>
+                        <Clock className="w-4 h-4" />
+                        <span>
+                          {vehicle.status === 'pending_new' ? 'PENDING REGISTRATION' : 
+                           vehicle.status === 'pending_update' ? 'PENDING UPDATE' : 
+                           'PENDING DELETE'}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-sm font-bold shadow-sm border ${vehicle.is_inside ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-500 border-gray-200'}`}>
+                        <Circle className={`w-3 h-3 ${vehicle.is_inside ? 'fill-green-500 text-green-500' : 'fill-gray-400 text-gray-400'}`} />
+                        <span>{vehicle.is_inside ? 'INSIDE' : 'OUTSIDE'}</span>
+                      </div>
+                    )}
                   </div>
-                  {!vehicle.is_active ? (
-                    <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-sm font-bold shadow-sm border bg-red-50 text-red-600 border-red-200 mt-2 mr-8">
-                      <Clock className="w-4 h-4" />
-                      <span>PENDING APPROVAL</span>
-                    </div>
-                  ) : (
-                    <div className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-sm font-bold shadow-sm border mt-2 mr-8 ${vehicle.is_inside ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-500 border-gray-200'}`}>
-                      <Circle className={`w-3 h-3 ${vehicle.is_inside ? 'fill-green-500 text-green-500' : 'fill-gray-400 text-gray-400'}`} />
-                      <span>{vehicle.is_inside ? 'INSIDE' : 'OUTSIDE'}</span>
-                    </div>
-                  )}
                 </div>
                 <div className="space-y-3">
                   <div>

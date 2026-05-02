@@ -169,8 +169,10 @@ CREATE TABLE vehicles (
     vehicle_type  vehicle_type_enum NOT NULL,
     license_plate VARCHAR(20) UNIQUE NOT NULL,
     vehicle_color VARCHAR(30),
-    is_inside     BOOLEAN DEFAULT FALSE,     -- anti-passback flag (UC-13)
-    is_active     BOOLEAN DEFAULT FALSE,     -- false = pending approval
+    is_inside     BOOLEAN DEFAULT FALSE,
+    is_active     BOOLEAN DEFAULT FALSE,     -- Cờ trạng thái cho IoT/Phần cứng
+    status        VARCHAR(20) DEFAULT 'pending_new', -- Trạng thái quy trình quản lý (pending_new, pending_update, approved)
+    pending_changes JSONB, -- Cột mới để lưu thông tin nháp khi sửa xe
     last_log_time TIMESTAMP,
     registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

@@ -81,15 +81,19 @@ const approveVehicle = async (req, res, next) => {
             });
         }
         
-        if (vehicle.is_active) {
-            return res.status(400).json({
-                success: false,
-                message: 'Xe đã được phê duyệt trước đó',
-            });
+        let result, actionMessage;
+
+        // PHÂN LUỒNG DUYỆT
+        if (vehicle.status === 'pending_delete') {
+            // Duyệt xóa = Thực thi lệnh xóa khỏi DB (Hàm rejectVehicle trong model thực chất là lệnh DELETE)
+            result = await managersModel.rejectVehicle(id);
+            actionMessage = 'Đã phê duyệt yêu cầu xóa. Xe đã được gỡ khỏi hệ thống.';
+        } else {
+            // Duyệt đăng ký/cập nhật = Khôi phục hoạt động bình thường
+            result = await managersModel.approveVehicle(id);
+            actionMessage = 'Đã phê duyệt thông tin xe thành công.';
         }
-        
-        // Phê duyệt
-        const result = await managersModel.approveVehicle(id);
+    
         
         // Ghi audit log
         await managersModel.logAuditAction({
@@ -97,67 +101,47 @@ const approveVehicle = async (req, res, next) => {
             actionType: 'approve_vehicle',
             targetTable: 'vehicles',
             targetId: parseInt(id, 10),
-            actionDetails: JSON.stringify({
-                license_plate: vehicle.license_plate,
-                owner_name: vehicle.owner_name,
-            }),
+            actionDetails: JSON.stringify({ license_plate: vehicle.license_plate, previous_status: vehicle.status }),
         });
         
-        res.status(200).json({
-            success: true,
-            message: 'Đã phê duyệt xe thành công',
-            data: result,
-        });
-    } catch (error) {
-        next(error);
-    }
+        res.status(200).json({ success: true, message: actionMessage, data: result });
+    } catch (error) { next(error); }
 };
 
-/**
- * POST /api/v1/managers/vehicles/:id/reject
- * Từ chối xe
- */
 const rejectVehicle = async (req, res, next) => {
     try {
         const zone = await getZoneOrFail(req, res);
         if (!zone) return;
-        
         const { id } = req.params;
         const { reason } = req.body;
-        
-        // Kiểm tra xe tồn tại và thuộc zone
         const vehicle = await managersModel.getVehicleById(id, zone.managed_zone_id);
-        if (!vehicle) {
-            return res.status(404).json({
-                success: false,
-                message: 'Không tìm thấy xe hoặc xe không thuộc zone quản lý',
-            });
+        
+        if (!vehicle) return res.status(404).json({ success: false, message: 'Không tìm thấy xe' });
+
+        let result, actionMessage;
+        
+        // PHÂN LUỒNG TỪ CHỐI
+        if (vehicle.status === 'pending_new') {
+            result = await managersModel.rejectVehicle(id); // Xóa rác
+            actionMessage = 'Đã từ chối và xóa đăng ký xe mới.';
+        } else if (vehicle.status === 'pending_update') {
+            result = await managersModel.restoreVehicle(id); // Khôi phục
+            actionMessage = 'Đã từ chối bản cập nhật, khôi phục lại trạng thái xe cũ.';
+        } else if (vehicle.status === 'pending_delete') {
+            result = await managersModel.restoreVehicle(id); // Khôi phục
+            actionMessage = 'Đã từ chối yêu cầu xóa xe, khôi phục lại quyền hoạt động.';
         }
         
-        // Từ chối (xóa)
-        const result = await managersModel.rejectVehicle(id);
-        
-        // Ghi audit log
         await managersModel.logAuditAction({
             actorId: req.user.user_id,
             actionType: 'reject_vehicle',
             targetTable: 'vehicles',
             targetId: parseInt(id, 10),
-            actionDetails: JSON.stringify({
-                license_plate: vehicle.license_plate,
-                owner_name: vehicle.owner_name,
-                reason: reason || 'Không đạt yêu cầu',
-            }),
+            actionDetails: JSON.stringify({ license_plate: vehicle.license_plate, previous_status: vehicle.status, reason: reason || 'Từ chối' }),
         });
         
-        res.status(200).json({
-            success: true,
-            message: 'Đã từ chối đăng ký xe',
-            data: result,
-        });
-    } catch (error) {
-        next(error);
-    }
+        res.status(200).json({ success: true, message: actionMessage, data: result });
+    } catch (error) { next(error); }
 };
 
 // ============================================================

@@ -118,21 +118,22 @@ const seedData = async () => {
         // vehicle_type là enum nhúng trực tiếp (không còn type_id FK)
         // owner_user_id trỏ vào users (không phải citizens)
         // is_active = true (bỏ qua pending approval cho seed data)
+        // 7. Tạo Vehicles cho citizen
         console.log('🚙 Tạo vehicles cho citizen...');
         const citizenResult = await db.query(`
             SELECT c.user_id FROM citizens c
             JOIN users u ON c.user_id = u.user_id
             WHERE u.username = 'citizen_hoa'
         `);
-        
+
         if (citizenResult.rows.length > 0) {
             await db.query(`
-                INSERT INTO vehicles (owner_user_id, vehicle_type, license_plate, vehicle_color, is_active) VALUES
-                ($1, 'car',       '51F-123.45', 'Trắng', true),
-                ($1, 'motorbike', '59A1-12345', 'Đen',   true)
+                INSERT INTO vehicles (owner_user_id, vehicle_type, license_plate, vehicle_color, is_active, status) VALUES
+                ($1, 'car',       '51F-123.45', 'Trắng', true, 'approved'),
+                ($1, 'motorbike', '59A1-12345', 'Đen',   true, 'approved')
                 ON CONFLICT (license_plate) DO NOTHING
             `, [citizenResult.rows[0].user_id]);
-            console.log('   ✅ Đã tạo 3 vehicles cho citizen_hoa\n');
+            console.log('   ✅ Đã tạo 2 vehicles cho citizen_hoa\n');
         }
         
         // 8. Tạo OTP mẫu cho citizen (token_data thay otp_code)

@@ -19,8 +19,11 @@ const getPendingVehicles = async (managedZoneId, { limit = 20, offset = 0 } = {}
             v.license_plate,
             v.vehicle_type,
             v.vehicle_color,
+            v.last_log_time,
             v.registered_at,
             v.is_active,
+            v.status,
+            v.pending_changes,
             u.full_name AS owner_name,
             u.email AS owner_email,
             c.phone_number AS owner_phone,
@@ -30,7 +33,7 @@ const getPendingVehicles = async (managedZoneId, { limit = 20, offset = 0 } = {}
         JOIN users u ON v.owner_user_id = u.user_id
         JOIN citizens c ON v.owner_user_id = c.user_id
         JOIN zones z ON c.zone_id = z.zone_id
-        WHERE v.is_active = false
+        WHERE v.status IN ('pending_new', 'pending_update','pending_delete')
           AND c.zone_id = $1
         ORDER BY v.registered_at DESC
         LIMIT $2 OFFSET $3
@@ -47,7 +50,7 @@ const countPendingVehicles = async (managedZoneId) => {
         SELECT COUNT(*) AS total
         FROM vehicles v
         JOIN citizens c ON v.owner_user_id = c.user_id
-        WHERE v.is_active = false AND c.zone_id = $1
+        WHERE v.status IN ('pending_new', 'pending_update','pending_delete') AND c.zone_id = $1
     `, [managedZoneId]);
 
     return parseInt(result.rows[0].total, 10);
@@ -60,7 +63,7 @@ const getVehicleById = async (vehicleId, managedZoneId) => {
     const result = await db.query(`
         SELECT
             v.vehicle_id, v.license_plate, v.vehicle_type, v.vehicle_color,
-            v.is_active, v.registered_at, v.owner_user_id,
+            v.is_active, v.status, v.registered_at, v.owner_user_id,
             u.full_name AS owner_name,
             c.phone_number AS owner_phone,
             c.address AS owner_address,
@@ -76,17 +79,33 @@ const getVehicleById = async (vehicleId, managedZoneId) => {
 };
 
 /**
- * Phê duyệt xe (set is_active = true)
+ * Phê duyệt xe (Hỗ trợ cả New và Update)
  */
 const approveVehicle = async (vehicleId) => {
-    const result = await db.query(`
-        UPDATE vehicles
-        SET is_active = true
-        WHERE vehicle_id = $1
-        RETURNING vehicle_id, license_plate, is_active
-    `, [vehicleId]);
-    
-    return result.rows[0];
+    const current = await db.query(`SELECT status, pending_changes FROM vehicles WHERE vehicle_id = $1`, [vehicleId]);
+    const vehicle = current.rows[0];
+
+    if (vehicle.status === 'pending_update' && vehicle.pending_changes) {
+        // Áp dụng data từ pending_changes qua các cột chính
+        const changes = vehicle.pending_changes; 
+        const result = await db.query(`
+            UPDATE vehicles
+            SET license_plate = $1, vehicle_type = $2, vehicle_color = $3, 
+                is_active = true, status = 'approved', pending_changes = NULL
+            WHERE vehicle_id = $4
+            RETURNING vehicle_id, license_plate, is_active
+        `, [changes.license_plate, changes.vehicle_type, changes.vehicle_color, vehicleId]);
+        return result.rows[0];
+    } else {
+        // Duyệt đăng ký mới bình thường
+        const result = await db.query(`
+            UPDATE vehicles
+            SET is_active = true, status = 'approved', pending_changes = NULL
+            WHERE vehicle_id = $1
+            RETURNING vehicle_id, license_plate, is_active
+        `, [vehicleId]);
+        return result.rows[0];
+    }
 };
 
 /**
@@ -99,6 +118,19 @@ const rejectVehicle = async (vehicleId) => {
         RETURNING vehicle_id, license_plate
     `, [vehicleId]);
     
+    return result.rows[0];
+};
+
+/**
+ * Khôi phục xe bị từ chối
+ */
+const restoreVehicle = async (vehicleId) => {
+    const result = await db.query(`
+        UPDATE vehicles
+        SET is_active = true, status = 'approved', pending_changes = NULL
+        WHERE vehicle_id = $1
+        RETURNING vehicle_id, license_plate
+    `, [vehicleId]);
     return result.rows[0];
 };
 
@@ -477,6 +509,7 @@ module.exports = {
     getVehicleById,
     approveVehicle,
     rejectVehicle,
+    restoreVehicle,
     logAuditAction,
 
     // FR_MAN_02
