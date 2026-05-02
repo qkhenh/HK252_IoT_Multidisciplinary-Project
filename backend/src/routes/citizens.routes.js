@@ -71,6 +71,13 @@ router.put('/vehicles/:vehicleId', citizensController.editVehicle);
  */
 router.patch('/vehicles/:vehicleId', citizensController.updateVehicleStatus);
 
+/**
+ * @route   DELETE /api/v1/citizens/vehicles/:vehicleId
+ * @desc    Xóa phương tiện cá nhân
+ * @access  Private - Citizen only
+ */
+router.delete('/vehicles/:vehicleId', citizensController.deleteVehicle);
+
 // ========================
 // GUEST REGISTRATION
 // ========================

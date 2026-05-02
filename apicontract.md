@@ -183,6 +183,21 @@ Cập nhật trạng thái xe (`active` / `inactive`).
 
 ---
 
+#### ✅ DELETE `/api/v1/citizens/vehicles/:vehicleId`
+Xóa phương tiện cá nhân khỏi hệ thống (Dùng khi cư dân đã bán xe hoặc đăng ký nhầm).
+
+**Response 200:**
+```json
+{
+  "success": true,
+  "message": "Đã xóa phương tiện cá nhân"
+}
+```
+
+**Response 404:** `{ "error": "Không tìm thấy xe hoặc bạn không có quyền xóa" }`
+
+---
+
 ### 2.2 Quản lý khách hẹn trước (UC-02)
 
 #### ✅ GET `/api/v1/citizens/guests`

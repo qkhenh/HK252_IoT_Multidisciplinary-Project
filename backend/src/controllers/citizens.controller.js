@@ -284,6 +284,36 @@ const updateVehicleStatus = async (req, res, next) => {
     }
 };
 
+/**
+ * Xóa xe cá nhân
+ * DELETE /api/v1/citizens/vehicles/:vehicleId
+ */
+const deleteVehicle = async (req, res, next) => {
+    try {
+        const { vehicleId } = req.params;
+        
+        const result = await citizensModel.deleteVehicle(
+            parseInt(vehicleId, 10),
+            req.user.user_id
+        );
+        
+        if (!result) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy xe hoặc bạn không có quyền xóa',
+            });
+        }
+        
+        res.status(200).json({
+            success: true,
+            message: 'Đã xóa phương tiện cá nhân',
+        });
+        
+    } catch (error) {
+        next(error);
+    }
+};
+
 // ========================
 // GUEST REGISTRATION
 // ========================
@@ -449,6 +479,7 @@ module.exports = {
     registerVehicle,
     editVehicle,
     updateVehicleStatus,
+    deleteVehicle,
     // Guests
     getMyGuests,
     registerGuest,

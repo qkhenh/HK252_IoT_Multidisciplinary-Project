@@ -135,7 +135,11 @@ const getVehiclesByCitizen = async (citizenId) => {
  */
 const checkLicensePlateExists = async (licensePlate) => {
     const query = `
+<<<<<<< HEAD
         SELECT vehicle_id, owner_user_id
+=======
+        SELECT vehicle_id, owner_user_id 
+>>>>>>> e3796e9d343d728d03857dedbfdee9d4b3053452
         FROM vehicles 
         WHERE UPPER(REPLACE(license_plate, '.', '')) = UPPER(REPLACE($1, '.', ''))
     `;
@@ -175,6 +179,21 @@ const updateVehicleInfo = async ({ vehicleId, ownerId, vehicleType, licensePlate
          WHERE vehicle_id = $4 AND owner_user_id = $5
          RETURNING vehicle_id, license_plate, vehicle_type, vehicle_color, is_active`,
         [licensePlate, vehicleType, vehicleColor || null, vehicleId, ownerId]
+    );
+    return result.rows.length > 0 ? result.rows[0] : null;
+};
+
+/**
+ * Xóa xe cá nhân
+ * @param {number} vehicleId
+ * @param {number} ownerId
+ */
+const deleteVehicle = async (vehicleId, ownerId) => {
+    const result = await db.query(
+        `DELETE FROM vehicles
+         WHERE vehicle_id = $1 AND owner_user_id = $2
+         RETURNING vehicle_id`,
+        [vehicleId, ownerId]
     );
     return result.rows.length > 0 ? result.rows[0] : null;
 };
@@ -358,6 +377,7 @@ module.exports = {
     registerVehicle,
     updateVehicleInfo,
     updateVehicleStatus,
+    deleteVehicle,
     // Guest Registrations
     getGuestRegistrations,
     registerGuest,
