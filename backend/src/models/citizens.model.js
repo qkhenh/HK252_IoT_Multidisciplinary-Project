@@ -135,7 +135,7 @@ const getVehiclesByCitizen = async (citizenId) => {
  */
 const checkLicensePlateExists = async (licensePlate) => {
     const query = `
-        SELECT vehicle_id, owner_id 
+        SELECT vehicle_id, owner_user_id
         FROM vehicles 
         WHERE UPPER(REPLACE(license_plate, '.', '')) = UPPER(REPLACE($1, '.', ''))
     `;
