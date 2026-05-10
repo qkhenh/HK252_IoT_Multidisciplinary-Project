@@ -987,7 +987,7 @@ Modern residential areas and apartment complexes face several challenges:
 Name & Manage Personal Vehicles \\ \hline
 ID & UC-01 \\ \hline
 Actor & Primary: Citizen\\ \hline
-Description & Citizen views and adds vehicles to personal whitelist for automatic gate access.\\ \hline
+Description & Citizen views, adds, edits, or deletes vehicles from personal whitelist.\\ \hline
 Preconditions &
 \begin{itemize}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt]
     \item Citizen has logged in to the system
@@ -996,18 +996,18 @@ Preconditions &
 \\ \hline
 Postconditions &
 \begin{itemize}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt, after=\strut]
-    \item \textbf{Success:} New vehicle is added to system with is\_active = false (waiting for approval).
-    \item \textbf{Failure:} Error message displayed, vehicle not added.
+    \item \textbf{Success:} Vehicle is added or updated with is\_active = false (waiting for approval), or vehicle is successfully deleted.
+    \item \textbf{Failure:} Error message displayed, changes not saved.
 \end{itemize}
 \\ \hline
 Basic Flow & 
 \begin{enumerate}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt]
     \item Citizen opens the My Vehicles page
     \item System displays list of current registered vehicles
-    \item Citizen selects Add New Vehicle
-    \item Citizen enters: License Plate, Vehicle Type, Color, Image (optional)
-    \item System validates license plate format and checks for duplicates
-    \item System saves vehicle with is\_active = false (pending approval)
+    \item Citizen selects Add New Vehicle, Edit Vehicle, or Delete Vehicle
+    \item Citizen enters/updates details (License Plate, Vehicle Type, Color)
+    \item System validates license plate format and checks for duplicates (ignoring current vehicle if editing)
+    \item System saves changes with is\_active = false (pending approval), or deletes the vehicle
     \item System shows success message to Citizen
 \end{enumerate}
 \\ \hline

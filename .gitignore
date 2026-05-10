@@ -123,4 +123,4 @@ docker-data/
 pg_data/
 
 .vscode/
-main.tex
+./main.tex

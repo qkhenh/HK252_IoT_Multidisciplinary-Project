@@ -314,15 +314,15 @@ Các khu dân cư/chung cư hiện đại đối mặt với thách thức:
 | **Actor** | Citizen |
 | **Description** | Citizen xem, thêm, sửa, xóa thông tin phương tiện cá nhân |
 | **Precondition** | Citizen đã đăng nhập |
-| **Postcondition** | Xe được thêm, sửa (sau khi sửa, is_active bị reset về false chờ duyệt), hoặc bị xóa khỏi hệ thống |
+| **Postcondition** | Xe được thêm, sửa, hoặc yêu cầu xóa sẽ được lưu ở trạng thái chờ duyệt (`pending_new`, `pending_update`, `pending_delete`) |
 
 **Main Flow:**
 1. Citizen truy cập trang "My Vehicles"
 2. Hệ thống hiển thị danh sách xe hiện có
-3. Citizen chọn "Thêm xe mới", "Sửa xe", hoặc "Xóa xe"
+3. Citizen chọn "Thêm xe mới", "Sửa xe", hoặc "Yêu cầu xóa xe"
 4. Citizen nhập/sửa: Biển số, Loại xe, Màu sắc
 5. Hệ thống validate biển số (format, trùng lặp với xe khác)
-6. Hệ thống lưu xe với `is_active = false` (chờ duyệt)
+6. Hệ thống lưu/cập nhật thông tin với trạng thái tương ứng (`pending_new`, `pending_update`, `pending_delete`) và `is_active = false` chờ duyệt
 7. Thông báo thành công cho Citizen
 
 **Alternative Flow:**
@@ -477,16 +477,16 @@ Các khu dân cư/chung cư hiện đại đối mặt với thách thức:
 | Attribute | Description |
 |-----------|-------------|
 | **Actor** | Manager |
-| **Description** | Manager duyệt/từ chối yêu cầu đăng ký xe mới |
+| **Description** | Manager duyệt/từ chối yêu cầu đăng ký xe mới, cập nhật thông tin xe hoặc yêu cầu xóa xe |
 | **Precondition** | Manager đã đăng nhập, quản lý zone cụ thể |
-| **Postcondition** | Xe được phê duyệt (is_active=true) hoặc bị xóa |
+| **Postcondition** | Yêu cầu được phê duyệt (cập nhật thông tin, kích hoạt xe hoặc xóa xe) hoặc bị từ chối (khôi phục trạng thái cũ) |
 
 **Main Flow:**
 1. Manager vào trang "Pending Vehicles"
-2. Hệ thống hiển thị danh sách xe chờ duyệt trong zone
-3. Manager click vào xe cụ thể → Xem chi tiết (ảnh, thông tin chủ)
+2. Hệ thống hiển thị danh sách xe chờ duyệt trong zone (Bao gồm đăng ký mới, sửa đổi và yêu cầu xóa)
+3. Manager click vào xe cụ thể → Xem chi tiết (thông tin cũ và mới, lý do)
 4. Manager chọn "Approve" hoặc "Reject"
-5. Hệ thống cập nhật và ghi audit log
+5. Hệ thống cập nhật trạng thái tương ứng (`approved` hoặc khôi phục/xóa rác) và ghi audit log
 
 ---
 
@@ -665,7 +665,7 @@ CREATE TYPE access_method_enum AS ENUM ('ai_plate_recognition', 'ai_camera_otp',
 
 | Table | Description | Columns |
 |-------|-------------|---------|
-| **vehicles** | Xe cư dân (whitelist) | vehicle_id, owner_user_id (FK), **vehicle_type_enum** *(nhúng trực tiếp)*, license_plate, vehicle_color, **is_inside** (cờ anti-passback), is_active, last_log_time |
+| **vehicles** | Xe cư dân (whitelist) | vehicle_id, owner_user_id (FK), **vehicle_type_enum** *(nhúng trực tiếp)*, license_plate, vehicle_color, **is_inside** (cờ anti-passback), is_active, status, pending_changes, last_log_time |
 | **guest_registrations** | Khách có hẹn | registration_id, host_id, guest_name, **vehicle_type_enum**, guest_license_plate, visit_start/end_time, status |
 | **access_tokens** | Mã OTP | token_id, issued_by, token_data, valid_from, valid_until, is_used, used_at |
 
