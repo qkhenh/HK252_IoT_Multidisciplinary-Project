@@ -4,6 +4,7 @@
  */
 
 const db = require('../libs/db');
+const bcrypt = require('bcryptjs');
 
 // ============================================================
 // FR_MAN_01 - QUẢN LÝ PHÊ DUYỆT PHƯƠNG TIỆN
@@ -158,7 +159,17 @@ const getTrafficByDay = async (managedZoneId, days = 7) => {
     const result = await db.query(`
         SELECT
             DATE(al.check_in_time) AS date,
-            COUNT(*) AS total_entries
+            COUNT(*) AS total,
+            COUNT(*) FILTER (
+                WHERE al.vehicle_id IS NOT NULL
+                   OR al.guest_reg_id IS NOT NULL
+                   OR al.token_id IS NOT NULL
+            ) AS granted,
+            COUNT(*) FILTER (
+                WHERE al.vehicle_id IS NULL
+                  AND al.guest_reg_id IS NULL
+                  AND al.token_id IS NULL
+            ) AS denied
         FROM access_logs al
         JOIN lanes l ON al.lane_id = l.lane_id
         JOIN gates g ON l.gate_id = g.gate_id
@@ -233,28 +244,65 @@ const getAccessMethodDistribution = async (managedZoneId) => {
 };
 
 /**
- * Tổng quan thống kê nhanh
+ * Tổng quan thống kê nhanh theo period (day / week / month)
  */
-const getQuickStats = async (managedZoneId) => {
+const getQuickStats = async (managedZoneId, period = 'day') => {
+    // Tính mốc thời gian bắt đầu
+    let since;
+    if (period === 'week') {
+        since = new Date();
+        since.setDate(since.getDate() - 7);
+    } else if (period === 'month') {
+        since = new Date();
+        since.setDate(since.getDate() - 30);
+    } else {
+        // day: từ đầu ngày hôm nay
+        since = new Date();
+        since.setHours(0, 0, 0, 0);
+    }
+
     const result = await db.query(`
         SELECT
             (SELECT COUNT(*) FROM access_logs al
              JOIN lanes l ON al.lane_id = l.lane_id
              JOIN gates g ON l.gate_id = g.gate_id
-             WHERE g.zone_id = $1 AND al.check_in_time >= CURRENT_DATE) AS today_total,
+             WHERE g.zone_id = $1 AND al.check_in_time >= $2
+            ) AS total_traffic,
+
             (SELECT COUNT(*) FROM access_logs al
              JOIN lanes l ON al.lane_id = l.lane_id
              JOIN gates g ON l.gate_id = g.gate_id
-             WHERE g.zone_id = $1 AND al.check_in_time >= NOW() - INTERVAL '7 days') AS week_total,
-            (SELECT COUNT(*) FROM vehicles v
-             JOIN citizens c ON v.owner_user_id = c.user_id
-             WHERE c.zone_id = $1 AND v.is_active = true) AS active_vehicles,
-            (SELECT COUNT(*) FROM vehicles v
-             JOIN citizens c ON v.owner_user_id = c.user_id
-             WHERE c.zone_id = $1 AND v.is_active = false) AS pending_approvals
-    `, [managedZoneId]);
+             WHERE g.zone_id = $1 AND al.check_in_time >= $2
+               AND al.access_method IN ('ai_plate_recognition','ai_camera_otp','ai_camera_qr')
+               AND (al.vehicle_id IS NOT NULL OR al.guest_reg_id IS NOT NULL OR al.token_id IS NOT NULL)
+            ) AS automation_count,
 
-    return result.rows[0];
+            (SELECT COUNT(*) FROM access_logs al
+             JOIN lanes l ON al.lane_id = l.lane_id
+             JOIN gates g ON l.gate_id = g.gate_id
+             WHERE g.zone_id = $1 AND al.check_in_time >= $2
+               AND al.vehicle_id IS NULL
+               AND al.guest_reg_id IS NULL
+               AND al.token_id IS NULL
+            ) AS security_alerts,
+
+            (SELECT COUNT(*) FROM vehicles v
+             JOIN citizens c ON v.owner_user_id = c.user_id
+             WHERE c.zone_id = $1 AND v.is_inside = true AND v.is_active = true
+            ) AS vehicles_inside
+    `, [managedZoneId, since]);
+
+    const row = result.rows[0];
+    const total = parseInt(row.total_traffic, 10) || 0;
+    const automation = parseInt(row.automation_count, 10) || 0;
+
+    return {
+        total_traffic: total,
+        automation_rate_percent: total > 0 ? Math.round((automation / total) * 1000) / 10 : 0,
+        security_alerts: parseInt(row.security_alerts, 10) || 0,
+        vehicles_inside: parseInt(row.vehicles_inside, 10) || 0,
+        period,
+    };
 };
 
 // ============================================================
@@ -472,6 +520,121 @@ const checkCitizenInZone = async (citizenId, managedZoneId) => {
 };
 
 // ============================================================
+// FR_MAN_07 - QUẢN LÝ NGƯỜI DÙNG
+// ============================================================
+
+/**
+ * Tạo user mới (citizen / guard / manager) và insert vào bảng role tương ứng
+ */
+const createUser = async ({ username, password, fullName, email, role, roleDetails = {} }) => {
+    const passwordHash = await bcrypt.hash(password, 10);
+    const client = await db.getClient();
+    try {
+        await client.query('BEGIN');
+
+        const userResult = await client.query(`
+            INSERT INTO users (username, password_hash, full_name, email, role)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING user_id, username, full_name, email, role, created_at
+        `, [username, passwordHash, fullName, email || null, role]);
+
+        const newUser = userResult.rows[0];
+
+        if (role === 'citizen') {
+            await client.query(`
+                INSERT INTO citizens (user_id, zone_id, address, phone_number, identity_card_number, is_house_owner)
+                VALUES ($1, $2, $3, $4, $5, $6)
+            `, [
+                newUser.user_id,
+                roleDetails.zone_id || null,
+                roleDetails.address || null,
+                roleDetails.phone_number || null,
+                roleDetails.identity_card_number || null,
+                roleDetails.is_house_owner || false,
+            ]);
+        } else if (role === 'guard') {
+            await client.query(`
+                INSERT INTO security_guards (user_id, assigned_gate_id, employee_code, shift_start, shift_end)
+                VALUES ($1, $2, $3, $4, $5)
+            `, [
+                newUser.user_id,
+                roleDetails.assigned_gate_id || null,
+                roleDetails.employee_code || null,
+                roleDetails.shift_start || null,
+                roleDetails.shift_end || null,
+            ]);
+        } else if (role === 'manager') {
+            await client.query(`
+                INSERT INTO managers (user_id, managed_zone_id, department_name)
+                VALUES ($1, $2, $3)
+            `, [
+                newUser.user_id,
+                roleDetails.managed_zone_id || null,
+                roleDetails.department_name || null,
+            ]);
+        }
+
+        await client.query('COMMIT');
+        return newUser;
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
+/**
+ * Lấy danh sách users trong zone của manager (citizens + guards)
+ */
+const getUsersInZone = async (managedZoneId, { role, page = 1, limit = 20 } = {}) => {
+    const offset = (page - 1) * limit;
+    const params = [managedZoneId];
+    let roleFilter = '';
+    let paramIdx = 2;
+
+    if (role) {
+        roleFilter = ` AND u.role = $${paramIdx}`;
+        params.push(role);
+        paramIdx++;
+    }
+
+    params.push(limit, offset);
+
+    const result = await db.query(`
+        SELECT
+            u.user_id,
+            u.username,
+            u.full_name,
+            u.email,
+            u.role,
+            u.created_at,
+            -- Citizen details
+            c.phone_number,
+            c.address,
+            -- Guard details
+            sg.employee_code,
+            g.gate_name AS assigned_gate_name
+        FROM users u
+        LEFT JOIN citizens c ON u.user_id = c.user_id
+        LEFT JOIN security_guards sg ON u.user_id = sg.user_id
+        LEFT JOIN gates g ON sg.assigned_gate_id = g.gate_id
+        WHERE (
+            (u.role = 'citizen' AND c.zone_id = $1)
+            OR (u.role = 'guard' AND g.zone_id = $1)
+            OR (u.role = 'manager' AND EXISTS (
+                SELECT 1 FROM managers m2 WHERE m2.user_id = u.user_id AND m2.managed_zone_id = $1
+            ))
+        )
+        ${roleFilter}
+        ORDER BY u.created_at DESC
+        LIMIT $${paramIdx} OFFSET $${paramIdx + 1}
+    `, params);
+
+    return result.rows;
+};
+
+// ============================================================
 // HELPERS
 // ============================================================
 
@@ -534,6 +697,10 @@ module.exports = {
     // FR_MAN_06
     createGuestRegistration,
     checkCitizenInZone,
+
+    // FR_MAN_07
+    createUser,
+    getUsersInZone,
 
     // Helpers
     getManagerZone,

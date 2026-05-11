@@ -188,16 +188,15 @@ const updateVehicleInfo = async ({ vehicleId, ownerId, vehicleType, licensePlate
 };
 
 /**
- * Yêu cầu xóa xe cá nhân (chuyển sang pending_delete)
+ * Xóa xe khỏi hệ thống (xóa trực tiếp, không cần manager duyệt)
  * @param {number} vehicleId
  * @param {number} ownerId
  */
 const deleteVehicle = async (vehicleId, ownerId) => {
     const result = await db.query(
-        `UPDATE vehicles
-         SET is_active = false, status = 'pending_delete'
+        `DELETE FROM vehicles
          WHERE vehicle_id = $1 AND owner_user_id = $2
-         RETURNING vehicle_id, license_plate, is_active, status`,
+         RETURNING vehicle_id, license_plate`,
         [vehicleId, ownerId]
     );
     return result.rows.length > 0 ? result.rows[0] : null;

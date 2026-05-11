@@ -95,6 +95,17 @@ const approveVehicle = async (req, res, next) => {
         }
     
         
+        // Gửi thông báo cho citizen qua WebSocket
+        const io = req.app.get('io');
+        if (io && vehicle.owner_user_id) {
+            io.to(`user_${vehicle.owner_user_id}`).emit('vehicle_status_changed', {
+                vehicle_id: parseInt(id, 10),
+                status: 'approved',
+                license_plate: vehicle.license_plate,
+                message: 'Ö tô/xe của bạn đã được phê duyệt.',
+            });
+        }
+
         // Ghi audit log
         await managersModel.logAuditAction({
             actorId: req.user.user_id,
@@ -118,18 +129,33 @@ const rejectVehicle = async (req, res, next) => {
         
         if (!vehicle) return res.status(404).json({ success: false, message: 'Không tìm thấy xe' });
 
+        if (!reason || !reason.trim()) {
+            return res.status(400).json({ success: false, message: 'Lý do từ chối là bắt buộc' });
+        }
+
         let result, actionMessage;
         
-        // PHÂN LUỒNG TỪ CHỐI
+        // PHÂN LUỔNG TỪ CHỐI
         if (vehicle.status === 'pending_new') {
-            result = await managersModel.rejectVehicle(id); // Xóa rác
+            result = await managersModel.rejectVehicle(id);
             actionMessage = 'Đã từ chối và xóa đăng ký xe mới.';
         } else if (vehicle.status === 'pending_update') {
-            result = await managersModel.restoreVehicle(id); // Khôi phục
+            result = await managersModel.restoreVehicle(id);
             actionMessage = 'Đã từ chối bản cập nhật, khôi phục lại trạng thái xe cũ.';
-        } else if (vehicle.status === 'pending_delete') {
-            result = await managersModel.restoreVehicle(id); // Khôi phục
-            actionMessage = 'Đã từ chối yêu cầu xóa xe, khôi phục lại quyền hoạt động.';
+        } else {
+            return res.status(400).json({ success: false, message: 'Xe không ở trạng thái chờ duyệt' });
+        }
+        
+        // Gửi thông báo cho citizen qua WebSocket
+        const io = req.app.get('io');
+        if (io && vehicle.owner_user_id) {
+            io.to(`user_${vehicle.owner_user_id}`).emit('vehicle_status_changed', {
+                vehicle_id: parseInt(id, 10),
+                status: 'rejected',
+                license_plate: vehicle.license_plate,
+                reason: reason.trim(),
+                message: `Xe bị từ chối: ${reason.trim()}`,
+            });
         }
         
         await managersModel.logAuditAction({
@@ -157,19 +183,15 @@ const getOverview = async (req, res, next) => {
         const zone = await getZoneOrFail(req, res);
         if (!zone) return;
         
-        const stats = await managersModel.getQuickStats(zone.managed_zone_id);
+        const { period = 'day' } = req.query;
+        const stats = await managersModel.getQuickStats(zone.managed_zone_id, period);
         
         res.status(200).json({
             success: true,
             data: {
                 zone_name: zone.zone_name,
                 department: zone.department_name,
-                stats: {
-                    today_total: parseInt(stats.today_total, 10),
-                    week_total: parseInt(stats.week_total, 10),
-                    active_vehicles: parseInt(stats.active_vehicles, 10),
-                    pending_approvals: parseInt(stats.pending_approvals, 10),
-                },
+                stats,
             },
         });
     } catch (error) {
@@ -542,31 +564,125 @@ const createGuest = async (req, res, next) => {
     }
 };
 
+// ============================================================
+// FR_MAN_07 - QUẢN LÝ NGƯỜI DÙNG
+// ============================================================
+
+/**
+ * GET /api/v1/managers/users
+ * Danh sách users trong zone
+ */
+const listUsers = async (req, res, next) => {
+    try {
+        const zone = await getZoneOrFail(req, res);
+        if (!zone) return;
+
+        const { role, page = 1, limit = 20 } = req.query;
+        const validRoles = ['citizen', 'guard', 'manager'];
+        if (role && !validRoles.includes(role)) {
+            return res.status(400).json({ success: false, message: 'role không hợp lệ' });
+        }
+
+        const users = await managersModel.getUsersInZone(zone.managed_zone_id, {
+            role,
+            page: parseInt(page, 10),
+            limit: parseInt(limit, 10),
+        });
+
+        res.status(200).json({ success: true, data: users });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * POST /api/v1/managers/users
+ * Tạo user mới (citizen / guard / manager)
+ */
+const createUser = async (req, res, next) => {
+    try {
+        const zone = await getZoneOrFail(req, res);
+        if (!zone) return;
+
+        const { username, password, full_name, email, role, role_details = {} } = req.body;
+
+        if (!username || !password || !full_name || !role) {
+            return res.status(400).json({
+                success: false,
+                message: 'Thiếu thông tin bắt buộc: username, password, full_name, role',
+            });
+        }
+
+        const validRoles = ['citizen', 'guard', 'manager'];
+        if (!validRoles.includes(role)) {
+            return res.status(400).json({ success: false, message: 'role không hợp lệ' });
+        }
+
+        if (password.length < 6) {
+            return res.status(400).json({ success: false, message: 'Mật khẩu phải có ít nhất 6 ký tự' });
+        }
+
+        // Gắn zone mặc định theo zone của manager nếu không tự chỉ định
+        const enrichedDetails = { ...role_details };
+        if (role === 'citizen' && !enrichedDetails.zone_id) {
+            enrichedDetails.zone_id = zone.managed_zone_id;
+        } else if (role === 'manager' && !enrichedDetails.managed_zone_id) {
+            enrichedDetails.managed_zone_id = zone.managed_zone_id;
+        }
+
+        const newUser = await managersModel.createUser({
+            username,
+            password,
+            fullName: full_name,
+            email: email || null,
+            role,
+            roleDetails: enrichedDetails,
+        });
+
+        await managersModel.logAuditAction({
+            actorId: req.user.user_id,
+            actionType: 'create_user',
+            targetTable: 'users',
+            targetId: newUser.user_id,
+            actionDetails: JSON.stringify({ username, role }),
+        });
+
+        res.status(201).json({
+            success: true,
+            message: `Đã tạo tài khoản ${role} thành công`,
+            data: newUser,
+        });
+    } catch (error) {
+        if (error.code === '23505') {
+            return res.status(409).json({ success: false, message: 'Tên đăng nhập đã tồn tại' });
+        }
+        next(error);
+    }
+};
+
 module.exports = {
     // FR_MAN_01
     getPendingVehicles,
     approveVehicle,
     rejectVehicle,
-
     // FR_MAN_02
     getOverview,
     getTrafficByDay,
     getTrafficByHour,
     getVehicleTypes,
     getAccessMethods,
-
     // FR_MAN_03
     searchLogs,
     getLogDetail,
     getAuditLogs,
     getGates,
-
     // FR_MAN_04
     getAIPerformance,
-
     // FR_MAN_05
     manualAction,
-
     // FR_MAN_06
     createGuest,
+    // FR_MAN_07
+    listUsers,
+    createUser,
 };

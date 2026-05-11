@@ -34,7 +34,7 @@ router.post('/vehicles/:id/approve', managersController.approveVehicle);
  * @route   POST /api/v1/managers/vehicles/:id/reject
  * @desc    Từ chối đăng ký xe
  * @access  Private - Manager only
- * @body    { reason?: string }
+ * @body    { reason: string }  (bắt buộc)
  */
 router.post('/vehicles/:id/reject', managersController.rejectVehicle);
 
@@ -146,5 +146,25 @@ router.post('/manual-action', managersController.manualAction);
  * @body    { host_citizen_id, guest_name, guest_license_plate, vehicle_type?, visit_start_time, visit_end_time }
  */
 router.post('/guests', managersController.createGuest);
+
+// ============================================================
+// FR_MAN_07 - QUẢN LÝ NGƯỜI DÙNG
+// ============================================================
+
+/**
+ * @route   GET /api/v1/managers/users
+ * @desc    Danh sách users trong zone (citizens, guards, managers)
+ * @access  Private - Manager only
+ * @query   role (citizen|guard|manager), page, limit
+ */
+router.get('/users', managersController.listUsers);
+
+/**
+ * @route   POST /api/v1/managers/users
+ * @desc    Tạo tài khoản mới (citizen / guard / manager)
+ * @access  Private - Manager only
+ * @body    { username, password, full_name, email?, role, role_details? }
+ */
+router.post('/users', managersController.createUser);
 
 module.exports = router;

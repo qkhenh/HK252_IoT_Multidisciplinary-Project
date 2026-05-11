@@ -306,7 +306,8 @@ const deleteVehicle = async (req, res, next) => {
         
         res.status(200).json({
             success: true,
-            message: 'Yêu cầu xóa xe đã được gửi đến Quản lý để phê duyệt.',
+            message: 'Đã xóa xe thành công.',
+            data: { vehicle_id: result.vehicle_id, license_plate: result.license_plate },
         });
         
     } catch (error) {

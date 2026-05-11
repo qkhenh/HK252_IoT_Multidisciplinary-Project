@@ -24,6 +24,11 @@ app.set('io', io)
 io.on('connection', (socket) => {
   console.log('🔗 Có Client kết nối WebSocket:', socket.id);
 
+  // Client (React) tham gia phòng riêng theo user_id để nhận thông báo cá nhân
+  socket.on('join_user_room', (userId) => {
+    socket.join(`user_${userId}`);
+  });
+
   // Nhận video từ Python -> Phát lên React
   socket.on('video_stream', (data) => {
     socket.broadcast.emit('live_frame', data);
