@@ -91,7 +91,9 @@ const GuardDashboard = () => {
           </span>
         </div>
 
-        <div className="flex items-center space-x-2 font-bold text-white flex-shrink-0 bg-blue-800 px-3 py-1.5 rounded-md border border-blue-700 text-sm">
+        <div 
+        onClick={() => navigate('/profile')}
+        className="flex items-center space-x-2 font-bold text-white flex-shrink-0 bg-blue-800 px-3 py-1.5 rounded-md border border-blue-700 text-sm">
           <User className="w-5 h-5" />
           <span>GUARD_NAM</span>
         </div>
