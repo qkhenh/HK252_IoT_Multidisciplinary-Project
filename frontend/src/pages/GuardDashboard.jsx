@@ -70,7 +70,7 @@ const GuardDashboard = () => {
             timeoutOutRef.current = setTimeout(() => {
                 setOutData(prev => ({ ...prev, result: null }));
                 setCapturedImageOut(null); // XÓA ẢNH CHỤP
-            }, 8000); 
+            }, 5000); 
 
         } else {
             setInData(payload);
@@ -83,7 +83,7 @@ const GuardDashboard = () => {
             timeoutInRef.current = setTimeout(() => {
                 setInData(prev => ({ ...prev, result: null }));
                 setCapturedImageIn(null); // XÓA ẢNH CHỤP
-            }, 8000);
+            }, 5000);
         }
     });
 

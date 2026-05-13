@@ -15,7 +15,7 @@ const createOTP = async (req, res, next) => {
             return res.status(404).json({ success: false, message: 'Không tìm thấy thông tin cư dân' });
         }
 
-        const token = await citizensModel.createOTP(req.user.user_id, 15);
+        const token = await citizensModel.createOTP(req.user.user_id, 3);
 
         res.status(201).json({
             success: true,
