@@ -10,20 +10,24 @@ const int GATE_UP   = 70;
 const int buzzer = 10;
 const int threshold = 10; 
 
-// Cảm biến
+// --- LANE A (ENTRY) ---
 const int trigInA = 2;  const int echoInA = 3; 
 const int trigOutA = 4; const int echoOutA = 5;
+
+// --- LANE B (EXIT) - ADDED ---
+const int trigInB = 12; const int echoInB = A0; 
+const int trigOutB = 8;  const int echoOutB = 11;
 
 // Trạng thái hệ thống
 bool vaoOpen = false;
 bool raOpen = false;
-bool manualOverride = false; // Cờ an toàn: Ngăn cảm biến tự đóng cửa
+bool manualOverride = false; 
 
 void setup() {
   Serial.begin(9600);
   lcd.init(); lcd.backlight();
   sVao.attach(6);
-  sRa.attach(7);
+  sRa.attach(7); // Servo cổng ra
   pinMode(buzzer, OUTPUT);
   sVao.write(GATE_DOWN);
   sRa.write(GATE_DOWN);
@@ -42,26 +46,34 @@ void loop() {
     String cmd = (separator != -1) ? input.substring(0, separator) : input;
     String payload = (separator != -1) ? input.substring(separator + 1) : "";
 
-    // LUỒNG 1: QUÉT AI TỰ ĐỘNG (Phải đúng chữ ENTRY_GO)
+    // LUỒNG 1: QUÉT AI TỰ ĐỘNG (ENTRY)
     if (cmd == "ENTRY_GO") {
       sVao.write(GATE_UP);
       vaoOpen = true;
-      manualOverride = false; // Hủy cờ thủ công nếu có
+      manualOverride = false;
       updateLCD("WELCOME,", payload);
       beep(1);
     }
-    // LUỒNG 2: MỞ THỦ CÔNG CỔNG VÀO (INBOUND)
+    // LUỒNG MỚI: QUÉT AI TỰ ĐỘNG (EXIT)
+    else if (cmd == "EXIT_GO") {
+      sRa.write(GATE_UP);
+      raOpen = true;
+      manualOverride = false;
+      updateLCD("SAFE TRAVELS,", payload);
+      beep(1);
+    }
+    // LUỒNG 2: MỞ THỦ CÔNG CỔNG VÀO
     else if (cmd == "MANUAL_OPEN_IN") {
       sVao.write(GATE_UP);
       vaoOpen = true;
-      manualOverride = true; // Kích hoạt cờ chặn cảm biến
+      manualOverride = true; 
       updateLCD("EMERGENCY OPENED", "INBOUND GATE");
     }
-    // LUỒNG 3: MỞ THỦ CÔNG CỔNG RA (OUTBOUND)
+    // LUỒNG 3: MỞ THỦ CÔNG CỔNG RA
     else if (cmd == "MANUAL_OPEN_OUT") {
       sRa.write(GATE_UP);
       raOpen = true;
-      manualOverride = true; // Kích hoạt cờ chặn cảm biến
+      manualOverride = true; 
       updateLCD("EMERGENCY OPENED", "OUTBOUND GATE");
     }
     // LUỒNG 4: ĐÓNG CỔNG THỦ CÔNG
@@ -70,51 +82,56 @@ void loop() {
       sRa.write(GATE_DOWN);
       vaoOpen = false;
       raOpen = false;
-      manualOverride = false; // Mở khóa cho cảm biến siêu âm hoạt động lại
+      manualOverride = false; 
       updateLCD("EMERGENCY CLOSED", "By Operator");
       delay(2000);
       resetLCD();
     }
-    // LUỒNG 5: TỪ CHỐI XE (AI báo sai / Biển cấm)
+    // LUỒNG 5: TỪ CHỐI XE
     else if (cmd == "DENY_PLATE") {
       updateLCD("UNAUTHORIZED", payload);
       beep(1);
     }
-    // LUỒNG 6: BÁO ĐỘNG ANTI-PASSBACK (QUAY VÒNG BIỂN SỐ)
+    // LUỒNG 6: BÁO ĐỘNG ANTI-PASSBACK
     else if (cmd == "ALARM_FAKE") {
-      // Đảm bảo cửa đóng chặt
       sVao.write(GATE_DOWN);
       sRa.write(GATE_DOWN);
       vaoOpen = false;
       raOpen = false;
-      
       updateLCD("ANTI-PASSBACK!", "WARNING: " + payload);
-      
-      // Hú còi cảnh báo dồn dập trong đúng 10 giây (20 chu kỳ x 0.5s)
-      // Trong 10 giây này hệ thống sẽ bị "đóng băng" để an ninh can thiệp
       for(int i = 0; i < 5; i++) { 
         digitalWrite(buzzer, HIGH); 
         delay(250);
         digitalWrite(buzzer, LOW);  
         delay(250);
       }
-      resetLCD(); // Hú xong thì reset màn hình
+      resetLCD();
     }
   }
 
   // --- 2. XỬ LÝ CẢM BIẾN SIÊU ÂM ---
   int dInA = getDist(trigInA, echoInA);
   int dOutA = getDist(trigOutA, echoOutA);
+  int dInB = getDist(trigInB, echoInB);   // Cảm biến chờ cổng ra
+  int dOutB = getDist(trigOutB, echoOutB); // Cảm biến sau cổng ra
 
-  // Phát hiện xe chờ ở cổng (Gửi cho Python)
+  // PHÁT HIỆN XE CỔNG VÀO (LANE A)
   if (dInA < threshold && !vaoOpen) {
     updateLCD("ENTRY DETECTED", "Scanning Plate...");
     Serial.println("CAR_ARRIVED"); 
     delay(1500); 
   }
 
-  // TỰ ĐỘNG ĐÓNG CỔNG - Chỉ chạy nếu KHÔNG BỊ KHÓA bởi Manual Mode
+  // PHÁT HIỆN XE CỔNG RA (LANE B) - MỚI
+  if (dInB < threshold && !raOpen) {
+    updateLCD("EXIT DETECTED", "Checking Plate...");
+    Serial.println("CAR_EXITING"); // Gửi tín hiệu để Python quét Unflag
+    delay(1500);
+  }
+
+  // TỰ ĐỘNG ĐÓNG CỔNG - Chỉ chạy nếu KHÔNG BỊ KHÓA
   if (!manualOverride) {
+    // Đóng cổng vào
     if (dOutA < threshold && vaoOpen) {
       delay(1000); 
       sVao.write(GATE_DOWN);
@@ -124,10 +141,20 @@ void loop() {
       delay(2000);
       resetLCD();
     }
+    // Đóng cổng ra - MỚI
+    if (dOutB < threshold && raOpen) {
+      delay(1000); 
+      sRa.write(GATE_DOWN);
+      raOpen = false;
+      updateLCD("GATE CLOSING", "See You Again");
+      beep(2);
+      delay(2000);
+      resetLCD();
+    }
   }
 }
 
-// --- Các hàm phụ trợ (Giữ nguyên của bạn) ---
+// --- Các hàm phụ trợ ---
 int getDist(int t, int e) {
   pinMode(t, OUTPUT); pinMode(e, INPUT);
   digitalWrite(t, LOW); delayMicroseconds(2);
