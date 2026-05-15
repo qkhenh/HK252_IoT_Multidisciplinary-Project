@@ -652,7 +652,7 @@ Từ chối xe kèm lý do. `reason` là **bắt buộc**. Citizen sẽ nhận t
   }
 }
 ```
-> Chỉ xử lý `pending_new` và `pending_update`. `pending_delete` không còn tồn tại (citizen xóa trực tiếp).
+> Chỉ xử lý `pending_new` và `pending_update`. Trạng thái `pending_delete` được xử lý qua endpoint **approve** (Manager xác nhận → xe bị xóa khỏi DB).
 
 ---
 
