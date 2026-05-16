@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   CarFront, Bike, Truck, LogOut, User, Zap, Circle, Plus, 
   Edit, X, Clock, RotateCw, Trash2, Bell, Users, Car, 
-  CalendarDays, History, ArrowRightLeft , UserPlus, Ticket, KeyRound, Timer
+  CalendarDays, History, ArrowRightLeft , UserPlus, Ticket, KeyRound, Timer, QrCode
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 
@@ -33,6 +33,11 @@ const CitizenDashboard = () => {
   const [activeOtp, setActiveOtp] = useState(null);
   const [otpProgress, setOtpProgress] = useState(0); 
   const [otpTimeLeftStr, setOtpTimeLeftStr] = useState('00:00');
+
+  const [qrPass, setQrPass] = useState(null);
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+  const [qrProgress, setQrProgress] = useState(0);
+  const [qrTimeLeftStr, setQrTimeLeftStr] = useState('00:00');
 
   const formatVN = (dateStr, options = {}) => {
     if (!dateStr || dateStr === 'Unknown') return '---';
@@ -276,6 +281,62 @@ const CitizenDashboard = () => {
     } catch (e) {}
   };
 
+  const generateQR = async () => {
+    // --- ĐÁNH CHẶN: NẾU ĐÃ CÓ MÃ QR VÀ CHƯA HẾT HẠN THÌ CHỈ CẦN MỞ LẠI MODAL ---
+    if (qrPass) {
+      setIsQrModalOpen(true);
+      return;
+    }
+
+    // NẾU CHƯA CÓ (hoặc mã cũ đã hết hạn bị hệ thống tự hủy), TIẾN HÀNH GỌI API MỚI
+    try {
+      const res = await fetch('http://localhost:5000/api/v1/citizens/qr-code', {
+        method: 'POST', headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setQrPass(data.data);
+        setIsQrModalOpen(true);
+      } else {
+        addNotification("Không thể tạo mã QR lúc này", "error");
+      }
+    } catch(e) { 
+      addNotification("Lỗi kết nối", "error"); 
+    }
+  };
+
+  // ĐẾM NGƯỢC QR (ÉP CỨNG 3 PHÚT)
+  useEffect(() => {
+    if (!qrPass) return;
+    const startStr = qrPass.valid_from || new Date().toISOString();
+    let startTime = new Date(startStr).getTime();
+    const nowCheck = new Date().getTime();
+
+    if (startTime < nowCheck - 2 * 60 * 60 * 1000) startTime += 7 * 60 * 60 * 1000;
+    let endTime = startTime + (3 * 60 * 1000);
+
+    const updateProgress = () => {
+        const now = new Date().getTime();
+        const remaining = endTime - now;
+        const total = 3 * 60 * 1000;
+        if (remaining <= 0) {
+            setQrPass(null); setIsQrModalOpen(false);
+            return true; 
+        } else {
+            const mins = Math.floor(remaining / 60000);
+            const secs = Math.floor((remaining % 60000) / 1000);
+            setQrTimeLeftStr(`${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`);
+            setQrProgress((remaining / total) * 100);
+            return false;
+        }
+    };
+
+    const isExpired = updateProgress();
+    if (isExpired) return;
+    const interval = setInterval(() => { if(updateProgress()) clearInterval(interval); }, 1000);
+    return () => clearInterval(interval);
+  }, [qrPass]);
+
   const handleGuestSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -348,6 +409,12 @@ const CitizenDashboard = () => {
           </div>
 
           <div className="flex items-center space-x-6">
+            {/* NÚT TẠO QR ĐỊNH DANH */}
+            <button onClick={generateQR} className="flex items-center space-x-2 bg-[#005B9F] hover:bg-blue-800 text-white px-4 py-2 rounded-xl font-bold transition-all shadow-sm">
+              <QrCode className="w-5 h-5" />
+              <span className="hidden md:inline">MY QR PASS</span>
+            </button>
+            
             <div className="relative">
               <button onClick={() => setShowNotif(!showNotif)} className="p-2 text-gray-500 hover:bg-gray-100 rounded-full relative transition-colors">
                 <Bell className="w-6 h-6" />
@@ -660,6 +727,32 @@ const CitizenDashboard = () => {
           </div>
         </div>
       )}
+
+      {/* MODAL MÃ QR ĐỊNH DANH */}
+      {isQrModalOpen && qrPass && (
+        <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex justify-center items-center z-[60] p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl flex flex-col items-center p-8 text-center relative">
+            <button onClick={() => setIsQrModalOpen(false)} className="absolute top-4 right-4 bg-gray-100 text-gray-600 hover:bg-red-500 hover:text-white p-2 rounded-full transition-colors"><X className="w-5 h-5" /></button>
+            
+            <h3 className="text-2xl font-black text-gray-900 mb-2">My QR Pass</h3>
+            <p className="text-gray-500 text-sm mb-6">Scan this code at the camera to open the gate.</p>
+            
+            <div className="bg-white p-4 rounded-2xl border-4 border-[#005B9F] shadow-lg mb-6">
+              {/* Dùng API ngoài để vẽ hình QR từ chuỗi UUID mà không cần tải thư viện */}
+              <img src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${qrPass.qr_data}`} alt="QR Code" className="w-48 h-48" />
+            </div>
+
+            <div className="w-full flex items-center justify-between text-sm font-bold text-gray-600 mb-2 px-2">
+              <span className="flex items-center"><Timer className="w-4 h-4 mr-1 text-[#005B9F] animate-pulse"/> Expires in</span>
+              <span className="text-[#005B9F] font-black">{qrTimeLeftStr}</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-3 mb-2 overflow-hidden shadow-inner">
+              <div className="bg-gradient-to-r from-blue-400 to-[#005B9F] h-3 rounded-full transition-all duration-1000 ease-linear" style={{ width: `${qrProgress}%` }}></div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

@@ -437,7 +437,88 @@ def process_and_authorize(frame, lane_id, current_plate=""):
     start_time = time.time()
     temp_path = f"temp_{lane_id}_{int(time.time())}.jpg"
     cv2.imwrite(temp_path, frame)
-    
+    proc_ms = 0
+    found_plate = ""
+
+    # ==========================================
+    # 1. KIỂM TRA MÃ QR TRƯỚC TIÊN (Rất nhanh)
+    # ==========================================
+    qr_detector = cv2.QRCodeDetector()
+    qr_data, bbox, _ = qr_detector.detectAndDecode(frame)
+
+    if qr_data and len(qr_data) > 10: # Chuỗi UUID của QR thường dài hơn 10 ký tự
+        proc_ms = int((time.time() - start_time) * 1000)
+        found_plate = qr_data
+        
+        # Chặn Spam quét liên tục
+        if found_plate == current_plate:
+            if os.path.exists(temp_path): os.remove(temp_path)
+            return found_plate
+
+        print(f"\n[AI] {lane_id} - PHÁT HIỆN MÃ QR: {qr_data} ({proc_ms}ms)")
+        
+        try:
+            with open(temp_path, "rb") as img_file:
+                full_image_base64 = base64.b64encode(img_file.read()).decode('utf-8')
+            payload = {
+                "lane_id": lane_id,
+                "token_data": qr_data,
+                "code_type": "qr_uuid",
+                "image_base64": f"data:image/jpeg;base64,{full_image_base64}"
+            }
+            # Gửi chung luồng API với OTP nhưng khác code_type
+            response = requests.post(OTP_BACKEND_URL, json=payload)
+            backend_response = response.json()
+            img_base64 = f"data:image/jpeg;base64,{full_image_base64}"
+        except Exception as e:
+            backend_response = None
+
+        if backend_response:
+            data = backend_response.get("data", backend_response) 
+            action = data.get("action", "KEEP_CLOSED")
+            issued_by = data.get("issued_by", "Cư dân nội khu")
+            clean_name = strip_accents(issued_by)
+            message = data.get("message", "").lower()
+
+            if action != "OPEN" and ("trong" in message or "đã vào" in message or "anti" in message or "passback" in message):
+                status = 'fail'
+                access_type = "anti_passback"
+                action = "ALARM"
+                issued_by = f"ANTI-PASSBACK: {issued_by}"
+            elif action != "OPEN":
+                status = 'fail'
+                access_type = "anti_passback"
+                action = "ALARM"
+                issued_by = "MÃ QR ĐÃ HẾT HẠN HOẶC KHÔNG HỢP LỆ"
+            else:
+                status = 'success'
+                access_type = "resident"
+
+            if sio.connected:
+                sio.emit('scan_result', {
+                    'lane_id': lane_id,
+                    'status': status,
+                    'plate': "QR CÁ NHÂN",
+                    'captured_image': img_base64,
+                    'owner_name': issued_by,        # HIỆN TÊN CƯ DÂN ĐÃ BẢO LÃNH MÃ QR
+                    'vehicle_type': "Mã qr",        # YÊU CẦU: HIỂN THỊ "Mã qr"
+                    'access_type': access_type,
+                })
+                
+            if action == "OPEN":
+                if lane_id == "MAIN-IN" and ser: ser.write(f"ENTRY_GO:{clean_name}\n".encode())
+                elif lane_id == "MAIN-OUT" and ser: ser.write(f"EXIT_GO:{clean_name}\n".encode())
+            elif action == "ALARM":
+                if ser: ser.write(f"ALARM_FAKE:QR_USED\n".encode()) 
+            else:
+                if ser: ser.write(f"DENY_PLATE:QR_FAIL\n".encode())
+        
+        if os.path.exists(temp_path): os.remove(temp_path)
+        return found_plate
+
+    # ==========================================
+    # 2. NẾU KHÔNG CÓ QR -> CHẠY AI NHẬN DIỆN BIỂN SỐ VÀ OTP
+    # ==========================================
     ai_result = extract_license_plates(temp_path, debug=False)
     proc_ms = int((time.time() - start_time) * 1000)
     found_plate = ""
@@ -524,13 +605,49 @@ def process_and_authorize(frame, lane_id, current_plate=""):
             
             if backend_response and backend_response.get("success"):
                 data = backend_response.get("data", {})
-                action = data.get("action")
+                action = data.get("action", "KEEP_CLOSED")
+                message = data.get("message", "").lower()
                 
+                # --- TRUY TÌM TÊN KHÁCH/CHỦ XE TỪ MỌI NGÓC NGÁCH ---
                 owner_info = data.get("owner_info") or {}
-                raw_name = owner_info.get("name", "Khách lạ")
+                found_name = data.get("guest_name") or owner_info.get("name") or owner_info.get("guest_name")
+                
+                v_type = owner_info.get("vehicle_type", data.get("vehicle_type", ""))
+                access_type = data.get("access_type", "unknown").lower()
+
+                # --- ĐÁNH CHẶN 1: ĐỊNH DẠNG TÊN KHÁCH HẸN TRƯỚC ---
+                # Nếu Backend có trả về tên, HOẶC type chứa chữ guest/khách
+                if found_name or "guest" in access_type or "khách" in access_type:
+                    access_type = "guest"
+                    v_type = "Scheduled Guest"
+                    if found_name:
+                        raw_name = f"Khách của Cư dân ({found_name})"
+                    else:
+                        raw_name = "Khách Hẹn Trước"
+                else:
+                    raw_name = "Khách lạ"
+
                 clean_name = strip_accents(raw_name)
-                v_type = owner_info.get("vehicle_type", "")
-                access_type = data.get("access_type", "unknown")
+
+                # --- ĐÁNH CHẶN 2: BẮT LỖI ANTI-PASSBACK (QUÉT LẦN 2) ---
+                is_anti_passback = False
+                if action != "OPEN":
+                    # Bổ sung hàng loạt từ khóa Backend thường dùng khi chặn quét 2 lần
+                    passback_keywords = ["đang ở trong", "đã vào", "đã check", "check-in", "check in", "anti", "passback", "đã quét"]
+                    if any(kw in message for kw in passback_keywords):
+                        is_anti_passback = True
+                    # Vẫn bắt chữ "trong" nhưng loại trừ câu "không có trong whitelist"
+                    elif "trong" in message and "không" not in message:
+                        is_anti_passback = True
+
+                if is_anti_passback:
+                    access_type = "anti_passback"
+                    action = "ALARM"
+                    # Ép tên hiển thị thành cảnh báo, nhưng nếu có tên khách thì kẹp chung vào luôn
+                    if raw_name != "Khách lạ":
+                        raw_name = f"ANTI-PASSBACK: {raw_name}"
+                    else:
+                        raw_name = "CẢNH BÁO ANTI-PASSBACK"
 
                 status = 'success' if action == 'OPEN' else 'fail'
                 
@@ -549,7 +666,7 @@ def process_and_authorize(frame, lane_id, current_plate=""):
                     if lane_id == "MAIN-IN" and ser: ser.write(f"ENTRY_GO:{clean_name}\n".encode())
                     elif lane_id == "MAIN-OUT" and ser: ser.write(f"EXIT_GO:{clean_name}\n".encode())
                 elif action == "ALARM" or access_type == "anti_passback":
-                    if ser: ser.write(f"ALARM_FAKE:{raw_text}\n".encode())
+                    if ser: ser.write(f"ALARM_FAKE:PASSBACK_DETECTED\n".encode())
                 else:
                     if ser: ser.write(f"DENY_PLATE:{raw_text}\n".encode())
             else:

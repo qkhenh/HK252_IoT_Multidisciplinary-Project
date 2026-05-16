@@ -423,7 +423,7 @@ const cancelGuest = async (req, res, next) => {
         const { registrationId } = req.params;
         
         const result = await citizensModel.cancelGuestRegistration(
-            parseInt(registrationId, 10),
+            registrationId,
             req.user.user_id
         );
         
