@@ -41,10 +41,16 @@ void loop() {
   if (Serial.available() > 0) {
     String input = Serial.readStringUntil('\n');
     input.trim();
+    if (input.length() == 0) return; // Bảo vệ lỗi chuỗi rỗng
 
     int separator = input.indexOf(':');
     String cmd = (separator != -1) ? input.substring(0, separator) : input;
     String payload = (separator != -1) ? input.substring(separator + 1) : "";
+
+    // 🔥 BẢO VỆ LCD: Ép cắt chuỗi tối đa 16 ký tự để không bị tràn màn hình
+    if (payload.length() > 16) {
+        payload = payload.substring(0, 16);
+    }
 
     // LUỒNG 1: QUÉT AI TỰ ĐỘNG (ENTRY)
     if (cmd == "ENTRY_GO") {

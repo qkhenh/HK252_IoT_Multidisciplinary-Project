@@ -402,8 +402,14 @@ def connect_websocket():
         print("[OK] Đã kết nối Web Dashboard!")
     except: pass
 
-def strip_accents(text):
-    return "".join(c for c in unicodedata.normalize('NFD', text) if unicodedata.category(c) != 'Mn')
+def format_lcd_text(text):
+    """Hàm bảo vệ LCD: Xóa mọi dấu, loại bỏ ký tự lạ, ép max 16 ký tự"""
+    if not text: return "Guest"
+    text = str(text)
+    text = text.replace('Đ', 'D').replace('đ', 'd')
+    text = "".join(c for c in unicodedata.normalize('NFD', text) if unicodedata.category(c) != 'Mn')
+    text = re.sub(r'[^a-zA-Z0-9\s.,-]', '', text).strip() # Chỉ giữ lại chữ, số và khoảng trắng
+    return text[:16]
 
 def send_to_backend(plate_text, processing_time_ms, image_path, lane_id):
     try:
@@ -441,7 +447,7 @@ def process_and_authorize(frame, lane_id, current_plate=""):
     found_plate = ""
 
     # ==========================================
-    # 1. KIỂM TRA MÃ QR (DÀNH CHO CƯ DÂN)
+    # 1. KIỂM TRA MÃ QR
     # ==========================================
     qr_detector = cv2.QRCodeDetector()
     qr_data, bbox, _ = qr_detector.detectAndDecode(frame)
@@ -473,9 +479,13 @@ def process_and_authorize(frame, lane_id, current_plate=""):
 
         if backend_response:
             data = backend_response.get("data", backend_response) 
-            action = data.get("action", "KEEP_CLOSED")
-            issued_by = data.get("issued_by", "Cư dân nội khu") # Đây là tên Cư dân
-            clean_name = strip_accents(issued_by)
+            action = str(data.get("action", "KEEP_CLOSED")).strip().upper()
+            
+            # Lấy tên hiển thị cho web và tên sạch cho LCD
+            owner_info = data.get("owner_info") or {}
+            issued_by = data.get("issued_by") or owner_info.get("name") or "Resident"
+            clean_name = format_lcd_text(issued_by) # Tên chuẩn hóa cho Arduino
+            
             message = data.get("message", "").lower()
 
             if action != "OPEN" and ("trong" in message or "đã vào" in message or "anti" in message or "passback" in message):
@@ -487,7 +497,7 @@ def process_and_authorize(frame, lane_id, current_plate=""):
                 status = 'fail'
                 access_type = "anti_passback"
                 action = "ALARM"
-                issued_by = "MÃ QR ĐÃ HẾT HẠN HOẶC KHÔNG HỢP LỆ"
+                issued_by = "MÃ QR KHÔNG HỢP LỆ"
             else:
                 status = 'success'
                 access_type = "resident"
@@ -498,18 +508,19 @@ def process_and_authorize(frame, lane_id, current_plate=""):
                     'status': status,
                     'plate': "QR CÁ NHÂN",
                     'captured_image': img_base64,
-                    'owner_name': issued_by,        # Tên cư dân
-                    'vehicle_type': "QR Code",      # LUỒNG 3: Type = QR Code
+                    'owner_name': issued_by,        
+                    'vehicle_type': "QR Code",      
                     'access_type': access_type,
                 })
                 
+            # ĐÃ FIX: encode('ascii', 'ignore') để đảm bảo Arduino không bao giờ dính lỗi UTF-8
             if action == "OPEN":
-                if lane_id == "MAIN-IN" and ser: ser.write(f"ENTRY_GO:{clean_name}\n".encode())
-                elif lane_id == "MAIN-OUT" and ser: ser.write(f"EXIT_GO:{clean_name}\n".encode())
+                if lane_id == "MAIN-IN" and ser: ser.write(f"ENTRY_GO:{clean_name}\n".encode('ascii', 'ignore'))
+                elif lane_id == "MAIN-OUT" and ser: ser.write(f"EXIT_GO:{clean_name}\n".encode('ascii', 'ignore'))
             elif action == "ALARM":
-                if ser: ser.write(f"ALARM_FAKE:QR_USED\n".encode()) 
+                if ser: ser.write(f"ALARM_FAKE:QR_USED\n".encode('ascii', 'ignore')) 
             else:
-                if ser: ser.write(f"DENY_PLATE:QR_FAIL\n".encode())
+                if ser: ser.write(f"DENY_PLATE:QR_FAIL\n".encode('ascii', 'ignore'))
         
         if os.path.exists(temp_path): os.remove(temp_path)
         return found_plate
@@ -525,7 +536,6 @@ def process_and_authorize(frame, lane_id, current_plate=""):
         raw_text = ai_result["plates"][0]
         clean_alphanum = re.sub(r'[^a-zA-Z0-9]', '', raw_text).upper()
         
-        # BÓC TÁCH OTP 6 SỐ
         is_otp = False
         if len(clean_alphanum) == 6:
             ocr_corrections = {
@@ -553,12 +563,14 @@ def process_and_authorize(frame, lane_id, current_plate=""):
             
             if backend_response:
                 data = backend_response.get("data", backend_response) 
-                action = data.get("action", "KEEP_CLOSED")
-                issued_by = data.get("issued_by", "Cư dân") 
-                clean_name = strip_accents(issued_by)
-
-                # Format theo luồng 2: Owner = "Emergency Guest của [Cư Dân]"
-                owner_display = f"Emergency Guest của {issued_by}"
+                action = str(data.get("action", "KEEP_CLOSED")).strip().upper()
+                
+                owner_info = data.get("owner_info") or {}
+                guest_info = data.get("guest_info") or {}
+                raw_name = data.get("issued_by") or owner_info.get("name") or guest_info.get("host_name") or "Guest"
+                
+                clean_name = format_lcd_text(raw_name) # Tên sạch cho Arduino
+                owner_display = f"Emergency Guest của {raw_name}" # Tên dài cho Web
 
                 if action != "OPEN":
                     status = 'fail'
@@ -575,18 +587,18 @@ def process_and_authorize(frame, lane_id, current_plate=""):
                         'status': status,
                         'plate': f"OTP: {clean_alphanum}",
                         'captured_image': img_base64,
-                        'owner_name': owner_display,       # Emergency Guest của...
-                        'vehicle_type': "Emergency Guest", # LUỒNG 2: Type = Emergency Guest
+                        'owner_name': owner_display,       
+                        'vehicle_type': "Emergency Guest", 
                         'access_type': access_type,
                     })
                     
                 if action == "OPEN":
-                    if lane_id == "MAIN-IN" and ser: ser.write(f"ENTRY_GO:{clean_name}\n".encode())
-                    elif lane_id == "MAIN-OUT" and ser: ser.write(f"EXIT_GO:{clean_name}\n".encode())
+                    if lane_id == "MAIN-IN" and ser: ser.write(f"ENTRY_GO:{clean_name}\n".encode('ascii', 'ignore'))
+                    elif lane_id == "MAIN-OUT" and ser: ser.write(f"EXIT_GO:{clean_name}\n".encode('ascii', 'ignore'))
                 elif action == "ALARM":
-                    if ser: ser.write(f"ALARM_FAKE:OTP_USED\n".encode())
+                    if ser: ser.write(f"ALARM_FAKE:OTP_USED\n".encode('ascii', 'ignore'))
                 else:
-                    if ser: ser.write(f"DENY_PLATE:OTP_FAIL\n".encode())
+                    if ser: ser.write(f"DENY_PLATE:OTP_FAIL\n".encode('ascii', 'ignore'))
             
         # ==========================================
         # LUỒNG BIỂN SỐ XE (CITIZEN HOẶC SCHEDULED GUEST)
@@ -597,30 +609,25 @@ def process_and_authorize(frame, lane_id, current_plate=""):
             
             if backend_response and backend_response.get("success"):
                 data = backend_response.get("data", {})
-                action = data.get("action", "KEEP_CLOSED")
+                action = str(data.get("action", "KEEP_CLOSED")).strip().upper()
                 message = data.get("message", "").lower()
                 
                 owner_info = data.get("owner_info") or {}
                 access_type = data.get("access_type", "unknown").lower()
                 v_type = data.get("vehicle_type") or owner_info.get("vehicle_type", "N/A")
 
-                # --- PHÂN LOẠI CHÍNH XÁC DỰA VÀO ACCESS_TYPE ---
                 if access_type == "resident":
-                    # LUỒNG 1.1 (Citizen): Hiện tên Citizen, loại xe giữ nguyên
-                    raw_name = owner_info.get("name", "Cư dân")
-                
+                    raw_name = owner_info.get("name", "Resident")
                 elif access_type == "guest":
-                    # LUỒNG 1.2 (Scheduled Guest): Hiện tên Khách của Cư dân, loại xe là Scheduled Guest
-                    guest_name = data.get("guest_name") or owner_info.get("name") or owner_info.get("guest_name") or "Khách lạ"
-                    raw_name = f"Khách của Cư dân ({guest_name})"
+                    guest_name = data.get("guest_name") or owner_info.get("name") or owner_info.get("guest_name") or "Guest"
+                    raw_name = f"Guest of {guest_name}" # Dùng tiếng Anh để LCD hiện đẹp hơn
                     v_type = "Scheduled Guest"
                 else:
-                    raw_name = "Khách chưa đăng ký"
+                    raw_name = "Khach la"
                     v_type = "N/A"
 
-                clean_name = strip_accents(raw_name)
+                clean_name = format_lcd_text(raw_name)
 
-                # --- BẮT LỖI ANTI-PASSBACK ---
                 is_anti_passback = False
                 if action != "OPEN":
                     passback_keywords = ["đang ở trong", "đã vào", "đã check", "check-in", "check in", "anti", "passback", "đã quét"]
@@ -632,7 +639,7 @@ def process_and_authorize(frame, lane_id, current_plate=""):
                 if is_anti_passback:
                     access_type = "anti_passback"
                     action = "ALARM"
-                    if raw_name not in ["Khách chưa đăng ký", "Khách lạ"]:
+                    if raw_name not in ["Khách chưa đăng ký", "Khach la"]:
                         raw_name = f"ANTI-PASSBACK: {raw_name}"
                     else:
                         raw_name = "CẢNH BÁO ANTI-PASSBACK"
@@ -651,14 +658,16 @@ def process_and_authorize(frame, lane_id, current_plate=""):
                     })
                     
                 if action == "OPEN":
-                    if lane_id == "MAIN-IN" and ser: ser.write(f"ENTRY_GO:{clean_name}\n".encode())
-                    elif lane_id == "MAIN-OUT" and ser: ser.write(f"EXIT_GO:{clean_name}\n".encode())
+                    if lane_id == "MAIN-IN" and ser: ser.write(f"ENTRY_GO:{clean_name}\n".encode('ascii', 'ignore'))
+                    elif lane_id == "MAIN-OUT" and ser: ser.write(f"EXIT_GO:{clean_name}\n".encode('ascii', 'ignore'))
                 elif action == "ALARM" or access_type == "anti_passback":
-                    if ser: ser.write(f"ALARM_FAKE:PASSBACK_DETECTED\n".encode())
+                    if ser: ser.write(f"ALARM_FAKE:PASSBACK_DETECTED\n".encode('ascii', 'ignore'))
                 else:
-                    if ser: ser.write(f"DENY_PLATE:{raw_text}\n".encode())
+                    plate_lcd = format_lcd_text(raw_text)
+                    if ser: ser.write(f"DENY_PLATE:{plate_lcd}\n".encode('ascii', 'ignore'))
             else:
-                if ser: ser.write(f"DENY_PLATE:{raw_text}\n".encode())
+                plate_lcd = format_lcd_text(raw_text)
+                if ser: ser.write(f"DENY_PLATE:{plate_lcd}\n".encode('ascii', 'ignore'))
     
     if os.path.exists(temp_path):
         os.remove(temp_path)
