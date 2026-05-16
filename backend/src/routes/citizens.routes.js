@@ -13,7 +13,7 @@ router.use(authorize('citizen'));
 
 /**
  * @route   POST /api/v1/citizens/tokens
- * @desc    Tạo mã OTP (6 số, hiệu lực 15 phút)
+ * @desc    Tạo mã OTP (6 số, hiệu lực 3 phút)
  * @access  Private - Citizen only
  */
 router.post('/tokens', citizensController.createOTP);

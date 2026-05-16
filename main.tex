@@ -221,7 +221,6 @@ FACULTY OF COMPUTER SCIENCE AND ENGINEERING
 \tableofcontents
 \pagebreak
 
-
 % Member list
 \section*{Member list \& Workload}
 \addcontentsline{toc}{section}{Member list \& Workload}
@@ -250,7 +249,6 @@ FACULTY OF COMPUTER SCIENCE AND ENGINEERING
 \end{table}
 \end{center}
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%% noi dung
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \pagebreak
@@ -836,7 +834,7 @@ Modern residential areas and apartment complexes face several challenges:
 \begin{enumerate}
     \item An unexpected guest (walk-in) or delivery driver arrives at the gate and is blocked because their plate is not registered.
     \item The guest calls the resident to inform them of their arrival.
-    \item The resident opens the Mobile App, selects ``Create OTP'' — the system generates a random 6-digit code (valid for 15 minutes) and displays it on the app.
+    \item The resident opens the Mobile App, selects ``Create OTP'' — the system generates a random 6-digit code (valid for 3 minutes) and displays it on the app.
     \item The resident sends the OTP code to the guest via phone call or message.
     \item \textbf{[Fully Automated — No Guard interaction required]} The guest simply holds their smartphone screen showing the 6-digit OTP towards the Camera at the gate lane.
     \item The AI Service analyzes the camera frame: detects the bright phone screen, and uses OCR to extract the 6-digit string.
@@ -898,7 +896,7 @@ Modern residential areas and apartment complexes face several challenges:
     \addlinespace
     FR-06 & The system shall allow citizens to register guests in advance with scheduled visit time. & \cmark & \cmark & High \\
     \addlinespace
-    FR-07 & The system shall allow citizens to create emergency OTP codes (6 digits, valid for 15 minutes). & \cmark & \cmark & High \\
+    FR-07 & The system shall allow citizens to create emergency OTP codes (6 digits, valid for 3 minutes). & \cmark & \cmark & High \\
     \addlinespace
     FR-08 & The system shall allow security guards to monitor gate activities in real-time through dashboard. & \cmark & \cmark & High \\
     \addlinespace
@@ -914,9 +912,9 @@ Modern residential areas and apartment complexes face several challenges:
     \addlinespace
     FR-14 & The system shall allow managers to approve or reject pending vehicle registrations and update requests (\texttt{pending\_new}, \texttt{pending\_update}). & \cmark & \cmark & High \\
     \addlinespace
-    FR-15 & The system shall provide managers with a dashboard showing 4 KPIs: Total Traffic Volume, Automation Rate, Security Alerts, and Active Visitors. & \cmark & \cmark & High \\
+    FR-15 & The system shall provide managers with a dashboard showing 4 KPIs: Total Traffic Volume, Automation Rate, Security Alerts, and Vehicles Inside. & \cmark & \cmark & High \\
     \addlinespace
-    FR-16 & The system shall allow managers to create and list system user accounts. & \cmark & \cmark & Medium \\
+    FR-16 & The system shall allow managers to manage system user accounts (list, create, update, delete). & \cmark & \cmark & Medium \\
 \end{longtable}
 
 \subsection{Non-Functional Requirements}
@@ -963,7 +961,7 @@ Modern residential areas and apartment complexes face several challenges:
     \addlinespace
     NFR-09 & The system shall maintain 99.5\% uptime availability during operation hours. & \cmark & \cmark & Medium \\
     \addlinespace
-    NFR-10 & The OTP codes shall be 6 digits, unique, and expire after 15 minutes. & \cmark & \cmark & High \\
+    NFR-10 & The OTP codes shall be 6 digits, unique, and expire after 3 minutes. & \cmark & \cmark & High \\
 \end{longtable}
 
 \subsection{Data Requirements}
@@ -975,7 +973,7 @@ Modern residential areas and apartment complexes face several challenges:
     
     \item \textbf{Access Control Lists:} Maintains a "Whitelist" for permanent residents and a "Temporary Whitelist" for pre-registered guests with specific expiration timestamps.
     
-    \item \textbf{Authentication Tokens:} Stores short-lived OTP codes (15-minute validity) and dynamic QR codes for non-motorized entry (pedestrians/cyclists).
+    \item \textbf{Authentication Tokens:} Stores short-lived OTP codes (3-minute validity) and dynamic QR codes for non-motorized entry (pedestrians/cyclists).
     
     \item \textbf{Activity Logs:} Detailed records of every entry/exit event, including timestamps, captured plate images, entry methods, and the specific actor involved.
     
@@ -1069,7 +1067,7 @@ Preconditions &
 \\ \hline
 Postconditions &
 \begin{itemize}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt, after=\strut]
-    \item \textbf{Success:} OTP code created with 15-minute validity period. OTP is displayed to Citizen and synced to Guard's monitor.
+    \item \textbf{Success:} OTP code created with 3-minute validity period. OTP is displayed to Citizen and synced to Guard's monitor.
     \item \textbf{Failure:} OTP not created, error message displayed.
 \end{itemize}
 \\ \hline
@@ -1078,7 +1076,7 @@ Basic Flow &
     \item Guest arrives at gate and calls Citizen
     \item Citizen selects Create OTP option on the app
     \item System generates random 6-digit code (unique in active pool)
-    \item System saves OTP to access\_tokens with valid\_until = NOW() + 15 minutes
+    \item System saves OTP to access\_tokens with valid\_until = NOW() + 3 minutes
     \item System displays OTP code on Citizen's app AND automatically synchronizes it to the Security Guard's monitor
     \item Citizen reads or messages the OTP code to the guest
 \end{enumerate}
@@ -1542,7 +1540,7 @@ The Manager Dashboard is designed to provide a concise, real-time operational ov
     \addlinespace
     3 & Security Alerts & Total number of access attempts denied — unregistered vehicle, invalid OTP, or anti-passback violation. & Count records where \texttt{vehicle\_id}, \texttt{guest\_reg\_id}, and \texttt{token\_id} are all \texttt{NULL} (no authorized entity matched). \\
     \addlinespace
-    4 & Active Visitors & Number of pre-registered guest vehicles currently inside the compound (inbound entries minus outbound exits). & Count inbound logs linked to \texttt{guest\_registrations} minus outbound logs for the same guest registrations. \\
+    4 & Vehicles Inside & Number of resident vehicles currently inside the compound (real-time count). & \texttt{COUNT(*) FROM vehicles WHERE is\_inside = true AND is\_active = true} with zone matching. \\
 \end{longtable}
 
 \newpage
@@ -1581,15 +1579,15 @@ The IoT Gateway is a Python application (\texttt{TestingMode.py}) that serves as
     \end{itemize}
     \item \textbf{Gate Control via Serial}:
     \begin{itemize}
-        \item On \texttt{OPEN}: sends \texttt{ENTRY\_GO:OwnerName\textbackslash n} to Arduino $\rightarrow$ Arduino opens barrier and shows welcome message on LCD.
-        \item On denial: sends \texttt{DENY\_PLATE:PlateText\textbackslash n} $\rightarrow$ Arduino shows \texttt{UNAUTHORIZED GUEST} on LCD.
+        \item On \texttt{OPEN}: sends \texttt{ENTRY\_GO:OwnerName\textbackslash n} (entry lane) or \texttt{EXIT\_GO:OwnerName\textbackslash n} (exit lane) to Arduino $\rightarrow$ Arduino opens barrier and shows welcome message on LCD.
+        \item On denial: sends \texttt{DENY\_PLATE:PlateText\textbackslash n} $\rightarrow$ Arduino shows \texttt{UNAUTHORIZED} on LCD.
         \item Arduino auto-closes barrier when exit HC-SR04 sensor detects vehicle has passed through.
     \end{itemize}
     \item \textbf{WebSocket Event Handling}:
     \begin{itemize}
         \item Continuously streams camera frames to Frontend via \texttt{video\_stream} Socket.IO event.
         \item Emits \texttt{scan\_result} event to Frontend with plate, owner name, and vehicle type after each check-in.
-        \item Listens for \texttt{manual\_command} event from Backend: \texttt{OPEN} $\rightarrow$ sends \texttt{ENTRY\_GO:Operator\textbackslash n}; \texttt{CLOSE} $\rightarrow$ sends \texttt{FORCE\_CLOSE\textbackslash n}.
+        \item Listens for \texttt{manual\_command} event from Backend: \texttt{OPEN} $\rightarrow$ sends \texttt{MANUAL\_OPEN\_IN} or \texttt{MANUAL\_OPEN\_OUT} (by lane); \texttt{CLOSE} $\rightarrow$ sends \texttt{FORCE\_CLOSE\textbackslash n}.
     \end{itemize}
 \end{enumerate}
 \end{tcolorbox}
@@ -1614,11 +1612,19 @@ The following tables define the serial protocol between the IoT Gateway (\texttt
     \bottomrule
     \endlastfoot
 
-    \texttt{ENTRY\_GO:\textit{OwnerName}\textbackslash n} & Open barrier; Arduino displays welcome message with owner name on LCD and beeps once. \\
+    \texttt{ENTRY\_GO:\textit{OwnerName}\textbackslash n} & Open entry barrier (Lane A); Arduino displays welcome message on LCD and beeps once. \\
     \addlinespace
-    \texttt{FORCE\_CLOSE\textbackslash n} & Emergency close all barriers; Arduino displays \texttt{EMERGENCY CLOSE} on LCD and beeps three times. \\
+    \texttt{EXIT\_GO:\textit{OwnerName}\textbackslash n} & Open exit barrier (Lane B); Arduino displays \texttt{SAFE TRAVELS} on LCD and beeps once. \\
     \addlinespace
-    \texttt{DENY\_PLATE:\textit{PlateText}\textbackslash n} & Access denied; Arduino displays \texttt{UNAUTHORIZED GUEST} on LCD and beeps once. \\
+    \texttt{MANUAL\_OPEN\_IN:\textit{Operator}\textbackslash n} & Manually open entry barrier; barrier stays open (no auto-close). \\
+    \addlinespace
+    \texttt{MANUAL\_OPEN\_OUT:\textit{Operator}\textbackslash n} & Manually open exit barrier; barrier stays open (no auto-close). \\
+    \addlinespace
+    \texttt{FORCE\_CLOSE\textbackslash n} & Emergency close all barriers; Arduino displays \texttt{EMERGENCY CLOSED} on LCD. \\
+    \addlinespace
+    \texttt{DENY\_PLATE:\textit{PlateText}\textbackslash n} & Access denied; Arduino displays \texttt{UNAUTHORIZED} on LCD and beeps once. \\
+    \addlinespace
+    \texttt{ALARM\_FAKE:\textit{Info}\textbackslash n} & Anti-passback alert; buzzer sounds 5 times and all barriers close. \\
 \end{longtable}
 
 \vspace{0.5em}
@@ -1639,7 +1645,9 @@ The following tables define the serial protocol between the IoT Gateway (\texttt
     \bottomrule
     \endlastfoot
 
-    \texttt{CAR\_ARRIVED\textbackslash n} & HC-SR04 ultrasonic sensor detected a vehicle approaching the gate; triggers AI license plate recognition in the Gateway. \\
+    \texttt{CAR\_ARRIVED\textbackslash n} & HC-SR04 sensor (Lane A) detected a vehicle at the entry gate; triggers AI license plate recognition in the Gateway. \\
+    \addlinespace
+    \texttt{CAR\_EXITING\textbackslash n} & HC-SR04 sensor (Lane B) detected a vehicle at the exit gate; triggers AI license plate recognition in the Gateway. \\
 \end{longtable}
 
 \subsection{Analysis of Problems \& Solutions}
@@ -1761,5 +1769,64 @@ To ensure the system not only works but also performs well and securely, the fol
         \item Foreign keys: actor\_id references USERS(user\_id), device\_id references IOT\_DEVICES(device\_id)
     \end{itemize}
 \end{itemize}
+
+%===========================================
+% SECTION: CONCLUSION
+%===========================================
+\newpage
+\section*{Conclusion}
+\addcontentsline{toc}{section}{Conclusion}
+
+\subsection*{Summary of Achievements}
+
+This project successfully designed and implemented a \textbf{Smart Toll Gate System} — an automated vehicle access control solution for residential areas, integrating IoT hardware, AI-based recognition, and a full-stack web platform.
+
+The delivered system covers all three user roles end-to-end:
+\begin{itemize}
+    \item \textbf{Citizens} can register vehicles, pre-register guests with scheduled visit windows, generate 6-digit OTP codes (3-minute validity), and create personal QR tokens for non-motorized entry — all via a web dashboard.
+    \item \textbf{Security Guards} monitor gate activities in real-time through a WebSocket-powered dashboard, perform manual gate overrides with mandatory reason selection, and submit AI plate correction feedback.
+    \item \textbf{Managers} view a 4-KPI operational dashboard (Total Traffic, Automation Rate, Security Alerts, Vehicles Inside), approve vehicle registration requests, and manage user accounts within their zone.
+\end{itemize}
+
+On the hardware side, the IoT Gateway (\texttt{TestingMode.py}) orchestrates two lanes simultaneously: it scans for QR codes first, then classifies AI output as either a 6-digit OTP or a license plate, and communicates with the Arduino via a structured serial protocol.
+
+\subsection*{Key Technical Contributions}
+
+\begin{itemize}
+    \item \textbf{Anti-Passback:} The \texttt{is\_inside} flag on each vehicle record prevents a vehicle from entering twice without exiting, enforced at the database query level.
+    \item \textbf{Dual-Lane Serial Protocol:} Seven outbound commands (\texttt{ENTRY\_GO}, \texttt{EXIT\_GO}, \texttt{MANUAL\_OPEN\_IN/OUT}, \texttt{FORCE\_CLOSE}, \texttt{DENY\_PLATE}, \texttt{ALARM\_FAKE}) and two inbound signals (\texttt{CAR\_ARRIVED}, \texttt{CAR\_EXITING}) give precise, lane-specific hardware control. A \texttt{manualOverride} flag prevents accidental auto-close during manual operations.
+    \item \textbf{OCR Post-Processing:} A character correction table (e.g., \texttt{O→0}, \texttt{I→1}, \texttt{S→5}) disambiguates AI output — 6 corrected digits are treated as OTP; otherwise as a license plate — reducing guard intervention.
+    \item \textbf{Unicode-Safe LCD:} \texttt{format\_lcd\_text()} removes Vietnamese diacritics and non-ASCII characters before sending to the 16×2 LCD via Serial, preventing garbled hardware output.
+\end{itemize}
+
+\subsection*{Limitations}
+
+\begin{itemize}
+    \item \textbf{Lighting and Angle Sensitivity:} YOLOv8 + PaddleOCR recognition degrades under poor lighting or steep camera angles. A fixed camera mount and adequate lighting are prerequisites for reliable production use.
+    \item \textbf{Network Dependency:} The IoT Gateway has no offline fallback. If the connection to the Backend is interrupted, the gate falls back to full manual operation.
+    \item \textbf{Single-Gate Testing:} Integration testing was conducted on one physical gate. Multi-gate, multi-zone concurrency has not been validated under real load.
+\end{itemize}
+
+\subsection*{Future Work}
+
+\begin{itemize}
+    \item \textbf{Improved OCR Accuracy:} Fine-tune the YOLOv8 model on a Vietnamese license plate dataset to reduce misreads under real-world lighting conditions.
+    \item \textbf{Mobile Companion:} Extend the citizen interface to a mobile app so residents can generate OTP/QR tokens and receive gate-event notifications without opening a browser.
+    \item \textbf{Multi-Gate Deployment:} Deploy and test the system across multiple gates in the same zone to validate the real-time WebSocket broadcast under concurrent load.
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% REFERENCES
+\newpage
+\nocite{*}
+\printbibliography[title={References}, heading=bibintoc]
+
+\section*{Project Repository}
+\addcontentsline{toc}{section}{Project Repository}
+The source code for this project is hosted on GitHub. You can access it via the following link:
+
+\begin{center}
+    \url{https://github.com/HuyViete/DE_Project.git}
+\end{center}
 
 \end{document}
