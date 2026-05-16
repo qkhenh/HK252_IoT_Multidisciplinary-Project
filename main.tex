@@ -121,7 +121,7 @@
 		\tiny \bf 
 	\end{tabular}  }
 \fancyfoot{} % clear all footer fields
-\fancyfoot[L]{\scriptsize \ttfamily IoT Multidisciplinary Project - Academic year 2024-2025}
+\fancyfoot[L]{\scriptsize \ttfamily IoT Multidisciplinary Project - Academic year 2025-2026}
 \fancyfoot[R]{\scriptsize \ttfamily Page {\thepage}/\pageref{LastPage}}
 \renewcommand{\headrulewidth}{0.3pt}
 \renewcommand{\footrulewidth}{0.3pt}
@@ -310,7 +310,7 @@ The system follows a \textbf{Three-Tier Architecture} with additional IoT and AI
     \item \textbf{Presentation Layer:} React.js web application with Material UI for citizen, guard, and manager dashboards.
     \item \textbf{Application Layer:} Node.js/Express backend server handling business logic, authentication, and API endpoints.
     \item \textbf{Data Layer:} PostgreSQL database storing users, vehicles, access logs, and images.
-    \item \textbf{AI Service:} Python-based service using YOLOv8 for plate detection and PaddleOCR for text extraction, along with QR scanning libraries for reading ePass on windshields.
+    \item \textbf{AI Service:} Python-based service using YOLOv8 for plate detection and PaddleOCR for text extraction, and OCR to read OTP/QR codes displayed on smartphone screens at the gate.
     \item \textbf{IoT Gateway:} Python application bridging the backend with Arduino hardware for gate control.
     \item \textbf{Hardware Layer:} Arduino, servo motor, IR sensors, and IP camera.
 \end{itemize}
@@ -832,16 +832,16 @@ Modern residential areas and apartment complexes face several challenges:
 \end{enumerate}
 \end{tcolorbox}
 
-\begin{tcolorbox}[colback=white!95!gray, colframe=black, title=Scenario 3: Multi-step Exceptions (OTP-based Guest Access)]
+\begin{tcolorbox}[colback=white!95!gray, colframe=black, title=Scenario 3: Automated Guest Access via Camera OCR (OTP)]
 \begin{enumerate}
-    \item This flow is designed for unexpected guests (walk-ins) or delivery drivers.
-    \item The guest arrives at the gate and is blocked because they are not registered.
+    \item An unexpected guest (walk-in) or delivery driver arrives at the gate and is blocked because their plate is not registered.
     \item The guest calls the resident to inform them of their arrival.
-    \item The resident uses the mobile app to register the guest and generate a new OTP.
-    \item The generated OTP is sent to the resident AND instantly displayed on the Security Guard's dashboard monitor.
-    \item The resident communicates the OTP to the guest via phone call or message.
-    \item The guest reads the OTP to the Security Guard.
-    \item The Guard verifies the OTP matching on their screen and triggers the gate opening.
+    \item The resident opens the Mobile App, selects ``Create OTP'' — the system generates a random 6-digit code (valid for 15 minutes) and displays it on the app.
+    \item The resident sends the OTP code to the guest via phone call or message.
+    \item \textbf{[Fully Automated — No Guard interaction required]} The guest simply holds their smartphone screen showing the 6-digit OTP towards the Camera at the gate lane.
+    \item The AI Service analyzes the camera frame: detects the bright phone screen, and uses OCR to extract the 6-digit string.
+    \item The extracted code is sent to the Backend (\texttt{POST /api/v1/gates/verify-camera-otp}). Backend validates: code matches an active OTP, not used, not expired $\rightarrow$ marks \texttt{is\_used = true} $\rightarrow$ logs access $\rightarrow$ sends \texttt{OPEN} command. Gate opens automatically.
+    \item The Security Guard sees the log appear on the real-time Dashboard (host name, guest info, timestamp).
 \end{enumerate}
 \end{tcolorbox}
 
@@ -903,6 +903,20 @@ Modern residential areas and apartment complexes face several challenges:
     FR-08 & The system shall allow security guards to monitor gate activities in real-time through dashboard. & \cmark & \cmark & High \\
     \addlinespace
     FR-09 & The system shall allow security guards to submit AI correction feedback when a plate is misrecognized, to improve recognition accuracy over time. & \cmark & \cmark & Medium \\
+    \addlinespace
+    FR-10 & The system shall allow citizens to view their personal vehicle access history (entry/exit logs filtered to their own vehicles). & \cmark & \cmark & Medium \\
+    \addlinespace
+    FR-11 & The system shall allow the AI Camera to automatically read a 6-digit OTP or QR UUID displayed on a smartphone screen and verify it without Guard interaction. & \cmark & \cmark & High \\
+    \addlinespace
+    FR-12 & The system shall allow citizens to generate a personal QR token (UUID, 3-minute validity) for non-motorized entry (pedestrians, cyclists). & \cmark & \cmark & Medium \\
+    \addlinespace
+    FR-13 & The system shall require security guards and managers to select a mandatory \texttt{action\_reason} before executing any manual gate override. & \cmark & \cmark & High \\
+    \addlinespace
+    FR-14 & The system shall allow managers to approve or reject pending vehicle registrations and update requests (\texttt{pending\_new}, \texttt{pending\_update}). & \cmark & \cmark & High \\
+    \addlinespace
+    FR-15 & The system shall provide managers with a dashboard showing 4 KPIs: Total Traffic Volume, Automation Rate, Security Alerts, and Active Visitors. & \cmark & \cmark & High \\
+    \addlinespace
+    FR-16 & The system shall allow managers to create and list system user accounts. & \cmark & \cmark & Medium \\
 \end{longtable}
 
 \subsection{Non-Functional Requirements}
@@ -961,11 +975,11 @@ Modern residential areas and apartment complexes face several challenges:
     
     \item \textbf{Access Control Lists:} Maintains a "Whitelist" for permanent residents and a "Temporary Whitelist" for pre-registered guests with specific expiration timestamps.
     
-    \item \textbf{Authentication Tokens:} Stores short-lived OTP codes (5-minute validity) and digital QR codes for manual or non-motorized entry.
+    \item \textbf{Authentication Tokens:} Stores short-lived OTP codes (15-minute validity) and dynamic QR codes for non-motorized entry (pedestrians/cyclists).
     
     \item \textbf{Activity Logs:} Detailed records of every entry/exit event, including timestamps, captured plate images, entry methods, and the specific actor involved.
     
-    \item \textbf{AI Metadata:} Stores confidence scores of plate recognition and high-dimensional vectors for advanced image similarity searches.
+    \item \textbf{AI Metadata:} Stores raw OCR output (\texttt{detected\_text}) from each access event — including license plate text, OTP digits, or QR UUID strings — alongside image snapshots for audit purposes.
     
     \item \textbf{System Audit Trails:} Logs of manual overrides by security guards, including the mandatory justification/reason for opening the barrier.
     
@@ -1182,38 +1196,36 @@ Exception Flow &
 Name & AI-Powered Automatic Check-In \\ \hline
 ID & UC-04 \\ \hline
 Actor & Primary: System (IoT Gateway + AI Service) \\ \hline
-Description & When vehicle approaches gate, IoT Gateway captures license plate image using camera and sends to AI Service; AI Service uses YOLOv8 model to detect license plate region and applies OCR to extract plate number; System compares extracted plate with registered vehicles in database; If plate matches authorized vehicle, system automatically opens gate barrier; All access attempts are logged with timestamp, confidence score, and captured image for audit purposes \\ \hline
+Description & When a vehicle approaches the gate, the IoT Gateway captures an image from the camera and sends it to the AI Service. The AI Service uses YOLOv8 to detect the license plate region and PaddleOCR to extract the plate text. The Backend applies a 3-step verification (permanent whitelist \textrightarrow{} temporary guest whitelist \textrightarrow{} deny). If authorized, the gate barrier opens automatically. All events are logged with timestamp and captured image. \\ \hline
 Preconditions &
 \begin{itemize}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt]
-    \item Camera and IR sensor at gate are operational
-    \item IoT Gateway is running and connected to backend
-    \item AI Service with YOLOv8, OCR model, and QR scanning library is available
-    \item Separate QR Scanner for pedestrians is operational
+    \item Camera and ultrasonic sensor at gate are operational
+    \item IoT Gateway (\texttt{TestingMode.py}) is running and connected to Backend
+    \item AI Service with YOLOv8 and PaddleOCR is available
     \item Gate barrier hardware is functional
     \item Vehicle database contains registered plates
 \end{itemize}
 \\ \hline
 Postconditions &
 \begin{itemize}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt, after=\strut]
-    \item \textbf{Success:} Vehicle plate recognized with high confidence and matches ePass QR data read from camera (for residents) or guest list. Gate opens automatically. System logs timestamp and toggles \texttt{is\_inside}.
-    \item \textbf{Failure:} Plate not recognized, ePass QR spoofing detected, or confidence too low. Gate remains closed. Guard alerted.
+    \item \textbf{Success:} Plate recognized and matched in whitelist (resident or pre-registered guest). Gate opens automatically. System logs event and toggles \texttt{is\_inside} for resident vehicles.
+    \item \textbf{Failure:} Plate not recognized, confidence too low, or anti-passback violation. Gate remains closed. Guard dashboard alerted in real-time.
 \end{itemize}
 \\ \hline
 Basic Flow & 
 \begin{enumerate}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt]
     \item Vehicle approaches gate and triggers IR proximity sensor
     \item IoT Gateway detects sensor activation via Arduino serial communication
-    \item IoT Gateway sends command to capture image from IP camera
-    \item Camera captures high-resolution image of vehicle front (including license plate and ePass QR on windshield)
-    \item IoT Gateway sends captured image to AI Service via HTTP API
+    \item IoT Gateway reads the current frame from the OpenCV camera capture
+    \item IoT Gateway calls the local AI engine to extract the license plate text
     \item AI Service preprocesses image (resize, normalize, enhance contrast)
-    \item AI Service runs YOLOv8 model to detect license plate bounding box AND uses software library to scan the ePass QR code in the image
-    \item AI Service applies OCR (PaddleOCR) to extract text from plate
-    \item AI Service returns extracted plate number, confidence score, and extracted ePass QR data
-    \item IoT Gateway sends plate number and ePass QR data to Backend API for verification
-    \item Backend verifies the matched license plate and valid ePass QR code to confirm anti-spoofing
-    \item Backend checks logical flow based on \texttt{is\_inside} flag
-    \item Backend creates access\_log entry with access\_type = 'ai\_checkin'
+    \item AI Service runs YOLOv8 to detect the license plate bounding box
+    \item AI Service applies PaddleOCR to extract the plate text string
+    \item AI Service returns \texttt{plate\_text} and confidence score
+    \item IoT Gateway sends \texttt{plate\_text}, \texttt{lane\_id}, and \texttt{image\_base64} to Backend (\texttt{POST /api/v1/gates/check-in})
+    \item Backend applies 3-step whitelist verification (Step 1: permanent, Step 2: guest, Step 3: deny)
+    \item Backend applies anti-passback check (\texttt{is\_inside} flag) for resident vehicles
+    \item Backend creates \texttt{access\_log} entry with \texttt{access\_method = 'ai\_plate\_recognition'}
     \item Backend updates the \texttt{is\_inside} flag and stores the timestamp
     \item Backend returns authorization response to IoT Gateway
     \item IoT Gateway sends OPEN command to Arduino via serial port
@@ -1225,13 +1237,12 @@ Basic Flow &
 \end{enumerate}
 \\ \hline
 Alternative Flow &
-\noindent \textbf{AF1: Guest with valid access token (at step 12)}
+\noindent \textbf{AF1: Guest with pre-registered vehicle (Step 2 of 3-step flow)}
 \begin{enumerate}
-    \item Backend does not find plate in vehicles table
-    \item Backend queries guest\_registrations and access\_tokens tables
-    \item Backend finds valid guest registration with matching expected plate
-    \item Backend verifies access token is within valid\_from and valid\_until
-    \item Backend authorizes entry and logs as 'guest\_checkin'
+    \item Backend does not find plate in \texttt{vehicles} table (Step 1 fails)
+    \item Backend queries \texttt{guest\_registrations} for matching \texttt{guest\_license\_plate} with \texttt{status = 'approved'}
+    \item Backend validates that current time is within \texttt{[visit\_start\_time, visit\_end\_time]}
+    \item If valid: Backend logs event (storing \texttt{guest\_reg\_id}) and sends \texttt{OPEN} command
 \end{enumerate}
 \noindent \textbf{AF2: Low confidence requires confirmation (at step 10)}
 \begin{enumerate}
@@ -1302,6 +1313,203 @@ Exception Flow &
 \end{longtable}
 
 \newpage
+\noindent \textbf{5/ UC-05: Guard Real-Time Gate Monitoring}
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.2}
+\setlength{\ucLeft}{30mm}
+
+\begin{longtable}{|>{\bfseries}p{\ucLeft}|
+                p{\dimexpr\textwidth-\ucLeft-4\tabcolsep-3\arrayrulewidth\relax}|}
+\hline
+Name & Guard Real-Time Gate Monitoring \\ \hline
+ID & UC-05 \\ \hline
+Actor & Primary: Security Guard \\ \hline
+Description & Guard monitors gate activities in real-time via the dashboard: live camera stream, recent access logs, and gate statistics.\\ \hline
+Preconditions &
+\begin{itemize}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt]
+    \item Guard has logged in to the system
+    \item Guard is assigned to a specific gate
+\end{itemize}
+\\ \hline
+Postconditions &
+\begin{itemize}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt, after=\strut]
+    \item \textbf{Success:} Dashboard updates continuously with new events in real-time.
+\end{itemize}
+\\ \hline
+Basic Flow & 
+\begin{enumerate}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt]
+    \item Guard logs in → system redirects to the assigned gate dashboard
+    \item System displays: live camera stream, 20 most recent logs, hourly and daily stats
+    \item When a new vehicle event occurs → AI processes → Dashboard updates via WebSocket
+    \item Guard can click any log to view detail (image snapshot, plate text, access method, status)
+\end{enumerate}
+\\ \hline
+\caption{UC\_05: Guard Real-Time Gate Monitoring}\label{tab:uc05}
+\end{longtable}
+
+\newpage
+\noindent \textbf{6/ UC-06: Automated OTP/QR Verification via Camera}
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.2}
+\setlength{\ucLeft}{30mm}
+
+\begin{longtable}{|>{\bfseries}p{\ucLeft}|
+                p{\dimexpr\textwidth-\ucLeft-4\tabcolsep-3\arrayrulewidth\relax}|}
+\hline
+Name & Automated OTP/QR Verification via Camera \\ \hline
+ID & UC-06 \\ \hline
+Actor & Primary: AI Service / Guest or Citizen \\ \hline
+Description & Guest holds their smartphone screen showing a 6-digit OTP (or resident shows a QR code) towards the Camera at the gate. The AI Service uses OCR to read the code automatically and sends it to the Backend for verification — no Guard interaction required.\\ \hline
+Preconditions &
+\begin{itemize}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt]
+    \item A valid OTP has been created (UC-03) or QR token issued
+    \item Camera and AI Service are operational
+\end{itemize}
+\\ \hline
+Postconditions &
+\begin{itemize}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt, after=\strut]
+    \item \textbf{Success:} OTP/QR marked \texttt{is\_used = true}, access log created, gate opens automatically.
+    \item \textbf{Failure:} Code invalid, expired, or unreadable — access denied, Guard notified.
+\end{itemize}
+\\ \hline
+Basic Flow & 
+\begin{enumerate}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt]
+    \item Guest/Citizen holds smartphone screen (OTP digits or QR) towards Camera
+    \item AI Service detects bright screen area in camera frame and applies OCR
+    \item Extracted code sent to Backend: \texttt{POST /api/v1/gates/verify-camera-otp}
+    \item Backend validates: code exists, \texttt{is\_used = false}, within \texttt{valid\_until}
+    \item Backend marks \texttt{is\_used = true} → creates \texttt{access\_log} → sends \texttt{OPEN} command
+    \item Gate opens automatically; Guard sees new log on real-time Dashboard
+\end{enumerate}
+\\ \hline
+Alternative Flow &
+\noindent \textbf{AF1: OCR cannot read the screen (at step 2)}
+\begin{enumerate}
+    \item Camera frame unclear (angle, glare, low resolution)
+    \item System displays guidance on gate LCD: adjust phone position
+    \item Guest repositions; flow retries from step 1
+\end{enumerate}
+\\ \hline
+Exception Flow &
+\noindent \textbf{EF1: Code invalid or expired (at step 4)}
+\begin{enumerate}
+    \item Backend finds no matching active token
+    \item Access denied; Guard dashboard receives alert
+    \item Guard assists guest manually (UC-03 or UC-07)
+\end{enumerate}
+\\ \hline
+\caption{UC\_06: Automated OTP/QR Verification via Camera}\label{tab:uc06}
+\end{longtable}
+
+\newpage
+\noindent \textbf{7/ UC-08: Guard AI Correction Feedback}
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.2}
+\setlength{\ucLeft}{30mm}
+
+\begin{longtable}{|>{\bfseries}p{\ucLeft}|
+                p{\dimexpr\textwidth-\ucLeft-4\tabcolsep-3\arrayrulewidth\relax}|}
+\hline
+Name & Guard AI Correction Feedback \\ \hline
+ID & UC-08 \\ \hline
+Actor & Primary: Security Guard \\ \hline
+Description & When the AI misreads a license plate, the Guard corrects the text. The corrected value is stored in \texttt{access\_logs.note} for audit and future reference.\\ \hline
+Preconditions &
+\begin{itemize}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt]
+    \item Guard has logged in
+    \item A recent access log exists with an incorrectly detected plate
+\end{itemize}
+\\ \hline
+Postconditions &
+\begin{itemize}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt, after=\strut]
+    \item \textbf{Success:} Corrected plate text saved in \texttt{access\_logs.note}.
+\end{itemize}
+\\ \hline
+Basic Flow & 
+\begin{enumerate}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt]
+    \item AI detects plate as "51A-12345" with low confidence
+    \item Guard notices actual plate is "51A-12346"
+    \item Guard clicks the log entry → selects "Edit plate"
+    \item Guard enters correct plate text → submits
+    \item System updates \texttt{access\_logs.note} with the corrected value
+\end{enumerate}
+\\ \hline
+\caption{UC\_08: Guard AI Correction Feedback}\label{tab:uc08}
+\end{longtable}
+
+\newpage
+\noindent \textbf{8/ UC-09: Manager Vehicle Approval}
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.2}
+\setlength{\ucLeft}{30mm}
+
+\begin{longtable}{|>{\bfseries}p{\ucLeft}|
+                p{\dimexpr\textwidth-\ucLeft-4\tabcolsep-3\arrayrulewidth\relax}|}
+\hline
+Name & Manager Vehicle Approval \\ \hline
+ID & UC-09 \\ \hline
+Actor & Primary: Manager \\ \hline
+Description & Manager reviews and approves or rejects vehicle registration requests (\texttt{pending\_new}) or update requests (\texttt{pending\_update}) submitted by citizens.\\ \hline
+Preconditions &
+\begin{itemize}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt]
+    \item Manager has logged in
+    \item At least one vehicle with \texttt{pending\_new} or \texttt{pending\_update} status exists
+\end{itemize}
+\\ \hline
+Postconditions &
+\begin{itemize}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt, after=\strut]
+    \item \textbf{Approve:} Vehicle status set to \texttt{approved}, \texttt{is\_active = true}, citizen can use vehicle.
+    \item \textbf{Reject:} Vehicle reverted to previous state or removed; citizen notified.
+\end{itemize}
+\\ \hline
+Basic Flow & 
+\begin{enumerate}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt]
+    \item Manager navigates to "Pending Vehicles" page
+    \item System displays list of pending vehicles (\texttt{pending\_new} and \texttt{pending\_update})
+    \item Manager clicks a vehicle to view details (plate, type, color, submitted changes)
+    \item Manager selects Approve or Reject
+    \item System updates vehicle status and records action in \texttt{system\_audit\_logs}
+    \item Manager dashboard refreshes to reflect updated queue
+\end{enumerate}
+\\ \hline
+\caption{UC\_09: Manager Vehicle Approval}\label{tab:uc09}
+\end{longtable}
+
+\newpage
+\noindent \textbf{9/ UC-11: Manager Access Log Search}
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.2}
+\setlength{\ucLeft}{30mm}
+
+\begin{longtable}{|>{\bfseries}p{\ucLeft}|
+                p{\dimexpr\textwidth-\ucLeft-4\tabcolsep-3\arrayrulewidth\relax}|}
+\hline
+Name & Manager Access Log Search \\ \hline
+ID & UC-11 \\ \hline
+Actor & Primary: Manager \\ \hline
+Description & Manager searches, filters, and reviews detailed access logs across all gates in the managed zone.\\ \hline
+Preconditions &
+\begin{itemize}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt]
+    \item Manager has logged in
+\end{itemize}
+\\ \hline
+Postconditions &
+\begin{itemize}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt, after=\strut]
+    \item \textbf{Success:} Filtered log list displayed with pagination; Manager can inspect individual entries including image snapshot.
+\end{itemize}
+\\ \hline
+Basic Flow & 
+\begin{enumerate}[leftmargin=*, nosep, topsep=0pt, partopsep=0pt, parsep=0pt]
+    \item Manager navigates to "Access Logs" page
+    \item Manager applies filters: date range, gate/lane, access method, license plate, granted/denied
+    \item System queries \texttt{access\_logs} and returns paginated results
+    \item Manager clicks a log entry to view detail: image snapshot, \texttt{detected\_text}, \texttt{action\_reason}, actor info
+\end{enumerate}
+\\ \hline
+\caption{UC\_11: Manager Access Log Search}\label{tab:uc11}
+\end{longtable}
+
+\newpage
 \subsection{Manager Dashboard KPIs}
 The Manager Dashboard is designed to provide a concise, real-time operational overview of the residential area through four core Key Performance Indicators (KPIs), extracted directly from the \texttt{access\_logs} table.
 
@@ -1343,7 +1551,7 @@ The Manager Dashboard is designed to provide a concise, real-time operational ov
 %===========================================
 \section{IoT Gateway Implementation (Python)}
 
-The IoT Gateway is a Python application (\texttt{SystemCommunication.py}) that serves as the bridge between the Backend server and the Arduino hardware. It connects to the Backend via WebSocket (Socket.IO) and communicates with Arduino via PySerial to control the gate barrier.
+The IoT Gateway is a Python application (\texttt{TestingMode.py}) that serves as the bridge between the Backend server and the Arduino hardware. It connects to the Backend via WebSocket (Socket.IO) and communicates with Arduino via PySerial to control the gate barrier.
 
 \begin{tcolorbox}[colback=white!95!gray, colframe=black, title=IoT Gateway Architecture]
 \begin{enumerate}
@@ -1387,7 +1595,7 @@ The IoT Gateway is a Python application (\texttt{SystemCommunication.py}) that s
 \end{tcolorbox}
 
 \subsection{Serial Communication Protocol}
-The following tables define the serial protocol between the IoT Gateway (\texttt{SystemCommunication.py}) and the Arduino (\texttt{Hardware.ino}) operating at 9600 baud.
+The following tables define the serial protocol between the IoT Gateway (\texttt{TestingMode.py}) and the Arduino (\texttt{Hardware.ino}) operating at 9600 baud.
 
 \noindent \textbf{Commands sent from IoT Gateway to Arduino:}
 
