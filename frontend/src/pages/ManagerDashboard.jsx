@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Zap, LogOut, User, Activity, Car, ShieldAlert, Users, 
   CheckCircle, XCircle, Clock, RotateCw, Bell, LayoutDashboard, 
-  ClipboardList, TrendingUp, PieChart as PieIcon, Cpu, Globe, Circle 
+  ClipboardList, TrendingUp, PieChart as PieIcon, Cpu, Globe, Circle, Plus, Edit, Trash2, Shield, UserPlus, Search, Key
 } from 'lucide-react';
 
 import { 
@@ -23,20 +23,22 @@ const ManagerDashboard = () => {
 
   const [notifications, setNotifications] = useState([]);
   const [showNotif, setShowNotif] = useState(false);
+
+  // --- STATES CHO USER MANAGEMENT ---
+  const [usersList, setUsersList] = useState([]);
+  const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+  const [userFormData, setUserFormData] = useState({
+    username: '', password: '', full_name: '', email: '', role: 'citizen',
+    phone_number: '', address: '', identity_card_number: '', employee_code: '', department_name: ''
+  });
+
   const isFirstLoad = useRef(true);
   const prevPendingRef = useRef([]);
 
-  const trafficData = [
-    { time: '00:00', flow: 10 }, { time: '04:00', flow: 5 }, { time: '08:00', flow: 120 },
-    { time: '12:00', flow: 80 }, { time: '16:00', flow: 150 }, { time: '20:00', flow: 60 },
-    { time: '23:59', flow: 20 },
-  ];
-
-  const vehicleTypeData = [
-    { name: 'Car', value: 65, color: '#005B9F' },
-    { name: 'Motorbike', value: 30, color: '#FF6B00' },
-    { name: 'Truck', value: 5, color: '#64748b' },
-  ];
+  // --- STATES CHỨA DỮ LIỆU ĐỘNG CHO BIỂU ĐỒ ---
+  const [trafficChartData, setTrafficChartData] = useState([]);
+  const [pieChartData, setPieChartData] = useState([]);
 
   const addNotification = (message, type = 'info') => {
     const uniqueId = Date.now() + Math.random(); 
@@ -55,13 +57,18 @@ const ManagerDashboard = () => {
 
     try {
       const headers = { 'Authorization': `Bearer ${localStorage.getItem('token') || ''}` };
-      const [kpiRes, pendingRes] = await Promise.all([
+      
+      // GỌI ĐỒNG THỜI 4 API ĐỂ TỐI ƯU TỐC ĐỘ TẢI TRANG
+      const [kpiRes, pendingRes, trafficRes, typesRes] = await Promise.all([
         fetch('http://localhost:5000/api/v1/managers/analytics/overview', { headers }),
-        fetch('http://localhost:5000/api/v1/managers/vehicles/pending', { headers })
+        fetch('http://localhost:5000/api/v1/managers/vehicles/pending', { headers }),
+        fetch('http://localhost:5000/api/v1/managers/analytics/traffic-by-hour', { headers }),
+        fetch('http://localhost:5000/api/v1/managers/analytics/vehicle-types', { headers })
       ]);
 
       if (kpiRes.status === 403) { alert("LỖI QUYỀN TRUY CẬP!"); navigate('/'); return; }
 
+      // 1. Xử lý dữ liệu danh sách xe chờ duyệt
       if (pendingRes.ok) {
         const pData = await pendingRes.json();
         const newPending = Array.isArray(pData) ? pData : (pData.data?.vehicles || pData.data || []);
@@ -69,7 +76,6 @@ const ManagerDashboard = () => {
         if (!isFirstLoad.current) {
             newPending.forEach(nv => {
                 const oldV = prevPendingRef.current.find(v => v.vehicle_id === nv.vehicle_id);
-                // THÔNG BÁO CHO MANAGER KHI CÓ ĐƠN MỚI
                 if (!oldV) {
                     if (nv.status === 'pending_new') {
                         addNotification(`🔔 Xe đăng ký mới chờ quản lý duyệt: ${nv.license_plate}`, 'success');
@@ -79,22 +85,141 @@ const ManagerDashboard = () => {
                 }
             });
         }
-        
         prevPendingRef.current = newPending;
         setPendingVehicles(newPending);
         isFirstLoad.current = false; 
       }
       
+      // 2. Xử lý dữ liệu 4 Thẻ KPIs
       if (kpiRes.ok) {
         const kData = await kpiRes.json();
         setKpis(kData?.data || kData || {});
       }
+
+      // 3. Xử lý dữ liệu Biểu đồ xu hướng 24h (AreaChart)
+      if (trafficRes.ok) {
+        const tData = await trafficRes.json();
+        const rawTraffic = tData.data || [];
+        const formattedTraffic = rawTraffic.map(item => ({
+          time: `${String(item.hour).padStart(2, '0')}:00`,
+          flow: parseInt(item.total_entries || item.total || 0, 10)
+        }));
+        setTrafficChartData(formattedTraffic);
+      }
+
+      // 4. Xử lý dữ liệu Biểu đồ cơ cấu loại xe (PieChart Donut)
+      if (typesRes.ok) {
+        const typeData = await typesRes.json();
+        const rawTypes = typeData.data || [];
+        const colorsPalette = ['#005B9F', '#FF6B00', '#64748B', '#10B981', '#EF4444'];
+        const formattedTypes = rawTypes.map((item, idx) => ({
+          name: item.vehicle_type ? item.vehicle_type.charAt(0).toUpperCase() + item.vehicle_type.slice(1) : 'Khác',
+          value: parseInt(item.count, 10) || 0,
+          color: colorsPalette[idx % colorsPalette.length]
+        }));
+        setPieChartData(formattedTypes);
+      }
+
     } catch (error) { 
-      console.error("Lỗi API:", error); 
+      console.error("Lỗi API Hệ thống:", error); 
     } finally { 
       setLoading(false); 
       setIsRefreshing(false); 
     }
+  };
+
+  // --- LOGIC GỌI API CHO USER MANAGEMENT ---
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch('http://localhost:5000/api/v1/managers/users', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUsersList(data.data || []);
+      }
+    } catch (e) { console.log("Lỗi fetch users:", e); }
+  };
+
+  // Tự động fetch Users khi chuyển sang tab 'users'
+  useEffect(() => {
+    if (activeTab === 'users') fetchUsers();
+  }, [activeTab]);
+
+  const handleOpenAddUser = () => {
+    setEditingUser(null);
+    setUserFormData({ 
+      username: '', password: '', full_name: '', email: '', role: 'citizen', 
+      phone_number: '', address: '', identity_card_number: '', 
+      employee_code: '', department_name: '' 
+    });
+    setIsUserModalOpen(true);
+  };
+
+  const handleOpenEditUser = (user) => {
+    setEditingUser(user);
+    setUserFormData({
+      username: user.username, password: '', full_name: user.full_name, email: user.email || '', role: user.role,
+      phone_number: user.phone_number || '', address: user.address || '', 
+      identity_card_number: user.identity_card_number || '', // Đã bổ sung
+      employee_code: user.employee_code || '', department_name: user.department_name || ''
+    });
+    setIsUserModalOpen(true);
+  };
+
+  const handleUserSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const role_details = {};
+      if (userFormData.role === 'citizen') {
+        role_details.phone_number = userFormData.phone_number; 
+        role_details.address = userFormData.address;
+        role_details.identity_card_number = userFormData.identity_card_number; // Bắn CCCD lên API
+      } else if (userFormData.role === 'guard') {
+        role_details.employee_code = userFormData.employee_code;
+      } else if (userFormData.role === 'manager') {
+        role_details.department_name = userFormData.department_name;
+      }
+
+      const payload = {
+        username: userFormData.username, full_name: userFormData.full_name, email: userFormData.email, role_details
+      };
+      
+      if (!editingUser) payload.role = userFormData.role; 
+      if (userFormData.password) payload.password = userFormData.password;
+
+      const url = editingUser ? `http://localhost:5000/api/v1/managers/users/${editingUser.user_id}` : 'http://localhost:5000/api/v1/managers/users';
+      
+      const res = await fetch(url, {
+        method: editingUser ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        addNotification(editingUser ? 'Cập nhật user thành công' : 'Thêm user mới thành công', 'success');
+        fetchUsers();
+        setIsUserModalOpen(false);
+      } else {
+        const err = await res.json();
+        addNotification(err.message || 'Lỗi xử lý', 'error');
+      }
+    } catch (e) { addNotification('Lỗi kết nối', 'error'); }
+  };
+
+  const handleDeleteUser = async (id, username) => {
+    if (!window.confirm(`Xác nhận XÓA VĨNH VIỄN tài khoản: ${username}?`)) return;
+    try {
+      const res = await fetch(`http://localhost:5000/api/v1/managers/users/${id}`, {
+        method: 'DELETE', headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.ok) {
+        addNotification(`Đã xóa tài khoản ${username}`, 'success');
+        fetchUsers();
+      } else {
+        const err = await res.json(); addNotification(err.message, 'error');
+      }
+    } catch (e) { addNotification('Lỗi kết nối', 'error'); }
   };
 
   const handleAction = async (vehicleId, actionType, licensePlate) => {
@@ -276,25 +401,53 @@ const ManagerDashboard = () => {
               {activeTab === 'dashboard' && (
                 <>
                   {/* KPI ROW */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-                    <div className="bg-white p-8 rounded-[32px] shadow-sm border border-gray-100 flex items-center space-x-6 hover:shadow-md transition-shadow">
-                      <div className="p-5 bg-blue-50 rounded-2xl text-[#005B9F]"><TrendingUp size={36} /></div>
-                      <div><p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Traffic Flow</p><p className="text-4xl font-black text-gray-900">{kpis?.stats?.total_traffic || 320}</p></div>
+                  <div className="grid grid-cols-4 gap-3">
+                    
+                    {/* Thẻ 1: Traffic Flow */}
+                    <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex items-center space-x-3 hover:shadow-md transition-shadow min-w-0">
+                      <div className="p-2 bg-blue-50 rounded-xl text-[#005B9F] shrink-0">
+                        <TrendingUp size={20} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[15px] font-bold text-gray-400 uppercase tracking-wider truncate">Traffic Flow</p>
+                        <p className="text-xl font-black text-gray-900 mt-0.5">{kpis?.stats?.total_traffic || 0}</p>
+                      </div>
                     </div>
-                    <div className="bg-white p-8 rounded-[32px] shadow-sm border border-gray-100 flex items-center space-x-6 hover:shadow-md transition-shadow">
-                      <div className="p-5 bg-orange-50 rounded-2xl text-[#FF6B00]"><Zap size={36} /></div>
-                      <div><p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Automation</p><p className="text-4xl font-black text-gray-900">{kpis?.stats?.automation_rate || 87}%</p></div>
-                    </div>
-                    <div className="bg-white p-8 rounded-[32px] shadow-sm border border-gray-100 flex items-center space-x-6 hover:shadow-md transition-shadow">
-                      <div className="p-5 bg-red-50 rounded-2xl text-red-600"><ShieldAlert size={36} /></div>
-                      <div><p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Alerts</p><p className="text-4xl font-black text-red-600">{kpis?.stats?.security_alerts || 12}</p></div>
-                    </div>
-                    <div className="bg-white p-8 rounded-[32px] shadow-sm border border-gray-100 flex items-center space-x-6 hover:shadow-md transition-shadow">
-                      <div className="p-5 bg-gray-50 rounded-2xl text-gray-600"><Users size={36} /></div>
-                      <div><p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Active Guests</p><p className="text-4xl font-black text-gray-900">{kpis?.stats?.active_visitors || 15}</p></div>
-                    </div>
-                  </div>
 
+                    {/* Thẻ 2: Automation */}
+                    <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex items-center space-x-3 hover:shadow-md transition-shadow min-w-0">
+                      <div className="p-2 bg-orange-50 rounded-xl text-[#FF6B00] shrink-0">
+                        <Zap size={20} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[15px] font-bold text-gray-400 uppercase tracking-wider truncate">Automation</p>
+                        <p className="text-xl font-black text-gray-900 mt-0.5">{kpis?.stats?.automation_rate_percent || 0}%</p>
+                      </div>
+                    </div>
+
+                    {/* Thẻ 3: Alerts */}
+                    <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex items-center space-x-3 hover:shadow-md transition-shadow min-w-0">
+                      <div className="p-2 bg-red-50 rounded-xl text-red-600 shrink-0">
+                        <ShieldAlert size={20} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[15px] font-bold text-gray-400 uppercase tracking-wider truncate">Alerts</p>
+                        <p className="text-xl font-black text-red-600 mt-0.5">{kpis?.stats?.security_alerts || 0}</p>
+                      </div>
+                    </div>
+
+                    {/* Thẻ 4: Vehicles Inside */}
+                    <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex items-center space-x-3 hover:shadow-md transition-shadow min-w-0">
+                      <div className="p-2 bg-gray-50 rounded-xl text-gray-600 shrink-0">
+                        <Users size={20} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[15px] font-bold text-gray-400 uppercase tracking-wider truncate">Inside</p>
+                        <p className="text-xl font-black text-gray-900 mt-0.5">{kpis?.stats?.vehicles_inside || 0}</p>
+                      </div>
+                    </div>
+
+                  </div>
                   {/* CHARTS ROW */}
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     {/* Line Chart */}
@@ -302,7 +455,7 @@ const ManagerDashboard = () => {
                       <h3 className="text-xl font-black text-gray-800 mb-8 flex items-center gap-3"><Activity className="text-[#005B9F] w-6 h-6"/> 24-Hour Traffic Trend</h3>
                       <div className="h-[350px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart data={trafficData}>
+                          <AreaChart data={trafficChartData}>
                             <defs>
                               <linearGradient id="colorFlow" x1="0" y1="0" x2="0" y2="100%">
                                 <stop offset="5%" stopColor="#005B9F" stopOpacity={0.3}/>
@@ -323,33 +476,45 @@ const ManagerDashboard = () => {
                     <div className="bg-white p-8 rounded-[32px] shadow-sm border border-gray-100 flex flex-col">
                       <h3 className="text-xl font-black text-gray-800 mb-8 flex items-center gap-3"><PieIcon className="text-[#FF6B00] w-6 h-6"/> Vehicle Types</h3>
                       <div className="flex-1 min-h-[250px] w-full relative">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie data={vehicleTypeData} innerRadius={70} outerRadius={100} paddingAngle={8} dataKey="value">
-                              {vehicleTypeData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={entry.color} />
-                              ))}
-                            </Pie>
-                            <Tooltip contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'}} />
-                          </PieChart>
-                        </ResponsiveContainer>
-                        {/* Center text for donut */}
-                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                            <span className="text-3xl font-black text-gray-800">100</span>
-                            <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Total</span>
-                        </div>
+                        {pieChartData.length === 0 ? (
+                          <div className="absolute inset-0 flex items-center justify-center text-sm font-bold text-gray-400 italic">Chưa có dữ liệu xe ra vào</div>
+                        ) : (
+                          <>
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
+                                <Pie data={pieChartData} innerRadius={70} outerRadius={100} paddingAngle={8} dataKey="value">
+                                  {pieChartData.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={entry.color} />
+                                  ))}
+                                </Pie>
+                                <Tooltip contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'}} />
+                              </PieChart>
+                            </ResponsiveContainer>
+                            {/* Chèn tổng số lượng thực tế vào tâm hình tròn */}
+                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                <span className="text-3xl font-black text-gray-800">
+                                  {pieChartData.reduce((sum, item) => sum + item.value, 0)}
+                                </span>
+                                <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Total</span>
+                            </div>
+                          </>
+                        )}
                       </div>
-                      <div className="space-y-4 mt-8">
-                        {vehicleTypeData.map((item) => (
+                      
+                      {/* Chú thích danh mục xe tự động sinh ra theo API */}
+                      <div className="space-y-3 mt-6 max-h-[180px] overflow-y-auto pr-1">
+                        {pieChartData.map((item) => (
                           <div key={item.name} className="flex justify-between items-center text-sm font-bold bg-gray-50 p-3 rounded-xl">
-                            <div className="flex items-center gap-3"><div className="w-4 h-4 rounded-full" style={{backgroundColor: item.color}}></div> <span className="text-gray-700">{item.name}</span></div>
-                            <span className="text-gray-900 text-base">{item.value}%</span>
+                            <div className="flex items-center gap-3">
+                              <div className="w-3 h-3 rounded-full" style={{backgroundColor: item.color}}></div> 
+                              <span className="text-gray-700">{item.name}</span>
+                            </div>
+                            <span className="text-gray-900 text-base">{item.value} lượt</span>
                           </div>
                         ))}
                       </div>
                     </div>
                   </div>
-
                   {/* SYSTEM HEALTH STATUS */}
                   <div className="bg-gray-900 rounded-[32px] p-10 text-white shadow-xl relative overflow-hidden">
                     {/* Decorative glow */}
@@ -381,15 +546,151 @@ const ManagerDashboard = () => {
               {activeTab === 'pending' && renderPendingSection()}
 
               {activeTab === 'users' && (
-                <div className="bg-white rounded-2xl p-20 text-center border-2 border-dashed border-gray-200">
-                  <Users size={48} className="mx-auto text-gray-300 mb-4" />
-                  <h3 className="text-xl font-bold text-gray-400">User Management module is under development...</h3>
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                  <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                    <div className="flex items-center space-x-3">
+                      <Shield className="w-6 h-6 text-[#005B9F]" />
+                      <h3 className="text-xl font-black text-gray-800">System Users</h3>
+                    </div>
+                    <button onClick={handleOpenAddUser} className="bg-[#005B9F] hover:bg-blue-800 text-white flex items-center space-x-2 px-4 py-2 rounded-xl font-bold shadow-sm transition-all transform hover:-translate-y-0.5">
+                      <UserPlus className="w-5 h-5" /> <span>ADD NEW USER</span>
+                    </button>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-200 text-xs uppercase tracking-widest text-gray-500">
+                          <th className="p-4 font-black">User Info</th>
+                          <th className="p-4 font-black">Role</th>
+                          <th className="p-4 font-black">Details</th>
+                          <th className="p-4 font-black text-center">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {usersList.map((user) => (
+                          <tr key={user.user_id} className="hover:bg-blue-50/30 transition-colors">
+                            <td className="p-4">
+                              <div className="flex items-center space-x-3">
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-white ${user.role === 'manager' ? 'bg-red-500' : user.role === 'guard' ? 'bg-orange-500' : 'bg-blue-500'}`}>
+                                  {user.full_name.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                  <p className="font-bold text-gray-900">{user.full_name}</p>
+                                  <p className="text-xs text-gray-500 font-mono">@{user.username} {user.email && `• ${user.email}`}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="p-4">
+                              <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+                                user.role === 'manager' ? 'bg-red-100 text-red-700 border border-red-200' : 
+                                user.role === 'guard' ? 'bg-orange-100 text-orange-700 border border-orange-200' : 
+                                'bg-blue-100 text-blue-700 border border-blue-200'
+                              }`}>
+                                {user.role}
+                              </span>
+                            </td>
+                            <td className="p-4 text-sm text-gray-600">
+                              {user.role === 'citizen' && <><span className="font-bold">Tel:</span> {user.phone_number || 'N/A'}<br/><span className="font-bold">Add:</span> {user.address || 'N/A'}<br/><span className="font-bold">CCCD:</span> {user.identity_card_number || 'N/A'}</>}
+                              {user.role === 'guard' && <><span className="font-bold">Code:</span> {user.employee_code || 'N/A'}</>}
+                              {user.role === 'manager' && <><span className="font-bold">Department:</span> {user.department_name || 'N/A'}</>}
+                            </td>
+                            <td className="p-4 text-center">
+                              <div className="flex justify-center space-x-2">
+                                <button onClick={() => handleOpenEditUser(user)} className="p-2 text-gray-400 hover:text-[#005B9F] bg-gray-50 hover:bg-blue-50 rounded-lg transition-colors" title="Edit"><Edit className="w-4 h-4" /></button>
+                                <button onClick={() => handleDeleteUser(user.user_id, user.username)} className="p-2 text-gray-400 hover:text-red-600 bg-gray-50 hover:bg-red-50 rounded-lg transition-colors" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                        {usersList.length === 0 && <tr><td colSpan="4" className="text-center py-10 text-gray-400 font-bold">No users found.</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>
           )}
         </main>
       </div>
+      {/* MODAL ADD/EDIT USER */}
+      {isUserModalOpen && (
+        <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex justify-center items-center z-50 p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl">
+            <div className="bg-[#005B9F] p-5 flex justify-between items-center text-white">
+              <h3 className="text-xl font-black flex items-center gap-2"><UserPlus className="w-5 h-5"/> {editingUser ? 'EDIT USER PROFILE' : 'CREATE NEW USER'}</h3>
+              <button onClick={() => setIsUserModalOpen(false)} className="hover:bg-blue-800 p-1.5 rounded-full"><XCircle className="w-6 h-6" /></button>
+            </div>
+            
+            <form onSubmit={handleUserSubmit} className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
+                <div>
+                  <label className="block text-xs font-black text-gray-500 uppercase tracking-widest mb-1">Username</label>
+                  <input type="text" required value={userFormData.username} onChange={(e) => setUserFormData({...userFormData, username: e.target.value})} className="w-full px-4 py-3 rounded-xl border bg-gray-50 focus:bg-white focus:border-blue-500 font-bold text-gray-800" placeholder="e.g. nguyen_a" />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-gray-500 uppercase tracking-widest mb-1">Password {editingUser && <span className="text-gray-400 lowercase font-normal">(Leave blank to keep current)</span>}</label>
+                  <input type={editingUser ? "password" : "text"} required={!editingUser} value={userFormData.password} onChange={(e) => setUserFormData({...userFormData, password: e.target.value})} className="w-full px-4 py-3 rounded-xl border bg-gray-50 focus:bg-white focus:border-blue-500 font-bold" placeholder={editingUser ? "••••••••" : "Min 6 characters"} />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-gray-500 uppercase tracking-widest mb-1">Full Name</label>
+                  <input type="text" required value={userFormData.full_name} onChange={(e) => setUserFormData({...userFormData, full_name: e.target.value})} className="w-full px-4 py-3 rounded-xl border bg-gray-50 focus:bg-white focus:border-blue-500 font-bold" placeholder="e.g. Nguyen Van A" />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-gray-500 uppercase tracking-widest mb-1">Email</label>
+                  <input type="email" value={userFormData.email} onChange={(e) => setUserFormData({...userFormData, email: e.target.value})} className="w-full px-4 py-3 rounded-xl border bg-gray-50 focus:bg-white focus:border-blue-500 font-bold" placeholder="Optional" />
+                </div>
+                
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-black text-gray-500 uppercase tracking-widest mb-1">Role</label>
+                  <select disabled={!!editingUser} value={userFormData.role} onChange={(e) => setUserFormData({...userFormData, role: e.target.value})} className="w-full px-4 py-3 rounded-xl border bg-gray-50 focus:bg-white focus:border-blue-500 font-bold uppercase disabled:opacity-50">
+                    <option value="citizen">Citizen</option>
+                    <option value="guard">Guard</option>
+                    <option value="manager">Manager</option>
+                  </select>
+                </div>
+
+                {/* DYNAMIC FIELDS BASED ON ROLE */}
+                <div className="md:col-span-2 pt-4 border-t border-gray-100 grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {userFormData.role === 'citizen' && (
+                    <>
+                      <div>
+                        <label className="block text-xs font-black text-blue-500 uppercase tracking-widest mb-1">Phone Number</label>
+                        <input type="text" value={userFormData.phone_number} onChange={(e) => setUserFormData({...userFormData, phone_number: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-blue-100 bg-blue-50 focus:bg-white focus:border-blue-500 font-bold" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-blue-500 uppercase tracking-widest mb-1">Address / Apartment</label>
+                        <input type="text" value={userFormData.address} onChange={(e) => setUserFormData({...userFormData, address: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-blue-100 bg-blue-50 focus:bg-white focus:border-blue-500 font-bold" placeholder="A-101" />
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="block text-xs font-black text-blue-500 uppercase tracking-widest mb-1">Identity Card Number (CCCD)</label>
+                        <input type="text" value={userFormData.identity_card_number} onChange={(e) => setUserFormData({...userFormData, identity_card_number: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-blue-100 bg-blue-50 focus:bg-white focus:border-blue-500 font-bold tracking-widest" placeholder="VD: 07920300..." />
+                      </div>
+                    </>
+                  )}
+                  {userFormData.role === 'guard' && (
+                    <div>
+                      <label className="block text-xs font-black text-orange-500 uppercase tracking-widest mb-1">Employee Code</label>
+                      <input type="text" value={userFormData.employee_code} onChange={(e) => setUserFormData({...userFormData, employee_code: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-orange-100 bg-orange-50 focus:bg-white focus:border-orange-500 font-bold uppercase" placeholder="G-123" />
+                    </div>
+                  )}
+                  {userFormData.role === 'manager' && (
+                    <div>
+                      <label className="block text-xs font-black text-red-500 uppercase tracking-widest mb-1">Department</label>
+                      <input type="text" value={userFormData.department_name} onChange={(e) => setUserFormData({...userFormData, department_name: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-red-100 bg-red-50 focus:bg-white focus:border-red-500 font-bold" placeholder="Ban Quản Lý" />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t border-gray-100">
+                <button type="button" onClick={() => setIsUserModalOpen(false)} className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition-colors">Cancel</button>
+                <button type="submit" className="flex-1 px-4 py-3 bg-[#005B9F] text-white font-black rounded-xl shadow-md hover:bg-blue-800 transition-colors">{editingUser ? 'UPDATE USER' : 'CREATE USER'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

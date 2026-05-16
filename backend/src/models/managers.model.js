@@ -612,13 +612,17 @@ const getUsersInZone = async (managedZoneId, { role, page = 1, limit = 20 } = {}
             -- Citizen details
             c.phone_number,
             c.address,
+            c.identity_card_number,
             -- Guard details
             sg.employee_code,
-            g.gate_name AS assigned_gate_name
+            g.gate_name AS assigned_gate_name,
+            -- Manager details
+            m.department_name
         FROM users u
         LEFT JOIN citizens c ON u.user_id = c.user_id
         LEFT JOIN security_guards sg ON u.user_id = sg.user_id
         LEFT JOIN gates g ON sg.assigned_gate_id = g.gate_id
+        LEFT JOIN managers m ON u.user_id = m.user_id
         WHERE (
             (u.role = 'citizen' AND c.zone_id = $1)
             OR (u.role = 'guard' AND g.zone_id = $1)

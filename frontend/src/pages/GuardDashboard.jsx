@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RotateCw, LogOut, User, Zap, ArrowRightToLine, ArrowLeftFromLine } from 'lucide-react';
+import { RotateCw, LogOut, User, Zap, ArrowRightToLine, ArrowLeftFromLine, } from 'lucide-react';
 import { io } from 'socket.io-client';
 
 const GuardDashboard = () => {

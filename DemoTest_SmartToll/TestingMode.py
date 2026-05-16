@@ -441,16 +441,15 @@ def process_and_authorize(frame, lane_id, current_plate=""):
     found_plate = ""
 
     # ==========================================
-    # 1. KIỂM TRA MÃ QR TRƯỚC TIÊN (Rất nhanh)
+    # 1. KIỂM TRA MÃ QR (DÀNH CHO CƯ DÂN)
     # ==========================================
     qr_detector = cv2.QRCodeDetector()
     qr_data, bbox, _ = qr_detector.detectAndDecode(frame)
 
-    if qr_data and len(qr_data) > 10: # Chuỗi UUID của QR thường dài hơn 10 ký tự
+    if qr_data and len(qr_data) > 10: 
         proc_ms = int((time.time() - start_time) * 1000)
         found_plate = qr_data
         
-        # Chặn Spam quét liên tục
         if found_plate == current_plate:
             if os.path.exists(temp_path): os.remove(temp_path)
             return found_plate
@@ -466,7 +465,6 @@ def process_and_authorize(frame, lane_id, current_plate=""):
                 "code_type": "qr_uuid",
                 "image_base64": f"data:image/jpeg;base64,{full_image_base64}"
             }
-            # Gửi chung luồng API với OTP nhưng khác code_type
             response = requests.post(OTP_BACKEND_URL, json=payload)
             backend_response = response.json()
             img_base64 = f"data:image/jpeg;base64,{full_image_base64}"
@@ -476,7 +474,7 @@ def process_and_authorize(frame, lane_id, current_plate=""):
         if backend_response:
             data = backend_response.get("data", backend_response) 
             action = data.get("action", "KEEP_CLOSED")
-            issued_by = data.get("issued_by", "Cư dân nội khu")
+            issued_by = data.get("issued_by", "Cư dân nội khu") # Đây là tên Cư dân
             clean_name = strip_accents(issued_by)
             message = data.get("message", "").lower()
 
@@ -500,8 +498,8 @@ def process_and_authorize(frame, lane_id, current_plate=""):
                     'status': status,
                     'plate': "QR CÁ NHÂN",
                     'captured_image': img_base64,
-                    'owner_name': issued_by,        # HIỆN TÊN CƯ DÂN ĐÃ BẢO LÃNH MÃ QR
-                    'vehicle_type': "Mã qr",        # YÊU CẦU: HIỂN THỊ "Mã qr"
+                    'owner_name': issued_by,        # Tên cư dân
+                    'vehicle_type': "QR Code",      # LUỒNG 3: Type = QR Code
                     'access_type': access_type,
                 })
                 
@@ -517,7 +515,7 @@ def process_and_authorize(frame, lane_id, current_plate=""):
         return found_plate
 
     # ==========================================
-    # 2. NẾU KHÔNG CÓ QR -> CHẠY AI NHẬN DIỆN BIỂN SỐ VÀ OTP
+    # 2. KHÔNG CÓ QR -> AI NHẬN DIỆN BIỂN SỐ VÀ OTP
     # ==========================================
     ai_result = extract_license_plates(temp_path, debug=False)
     proc_ms = int((time.time() - start_time) * 1000)
@@ -525,11 +523,9 @@ def process_and_authorize(frame, lane_id, current_plate=""):
     
     if ai_result.get("status") == "success" and ai_result.get("plates"):
         raw_text = ai_result["plates"][0]
-        
-        # 1. BÓC TÁCH: Lọc bỏ toàn bộ dấu gạch ngang, chấm, khoảng trắng và in hoa
         clean_alphanum = re.sub(r'[^a-zA-Z0-9]', '', raw_text).upper()
         
-        # 2. TỪ ĐIỂN SỬA LỖI OCR DÀNH CHO OTP 6 SỐ
+        # BÓC TÁCH OTP 6 SỐ
         is_otp = False
         if len(clean_alphanum) == 6:
             ocr_corrections = {
@@ -537,23 +533,19 @@ def process_and_authorize(frame, lane_id, current_plate=""):
                 'I': '1', 'L': '1', 'Z': '2', 'B': '8',
                 'S': '5', 'A': '4', 'G': '6'
             }
-            # Thay thế các chữ cái bị nhầm thành số tương ứng
             corrected_str = "".join([ocr_corrections.get(c, c) for c in clean_alphanum])
-            
-            # Nếu sau khi sửa xong mà nó toàn là số -> 100% là OTP
             if corrected_str.isdigit():
                 is_otp = True
-                clean_alphanum = corrected_str # Lấy chuỗi đã sửa chuẩn làm mã gửi đi
+                clean_alphanum = corrected_str 
         
         found_plate = clean_alphanum if is_otp else raw_text
 
-        # Ngăn chặn AI gửi kết quả trùng lặp lên Database
         if found_plate == current_plate:
             if os.path.exists(temp_path): os.remove(temp_path)
             return found_plate
 
         # ==========================================
-        # LUỒNG XỬ LÝ DÀNH RIÊNG CHO OTP
+        # LUỒNG OTP (EMERGENCY GUEST)
         # ==========================================
         if is_otp:
             print(f"\n[AI] {lane_id} - PHÁT HIỆN MÃ OTP: {clean_alphanum} ({proc_ms}ms)")
@@ -562,20 +554,20 @@ def process_and_authorize(frame, lane_id, current_plate=""):
             if backend_response:
                 data = backend_response.get("data", backend_response) 
                 action = data.get("action", "KEEP_CLOSED")
-                issued_by = data.get("issued_by", "Khách của Cư dân")
+                issued_by = data.get("issued_by", "Cư dân") 
                 clean_name = strip_accents(issued_by)
 
-                # --- ĐOẠN NÂNG CẤP ANTI-PASSBACK ---
-                # Nếu Backend không cho OPEN (nghĩa là mã đã dùng rồi hoặc sai) -> Ép thành Anti-Passback
+                # Format theo luồng 2: Owner = "Emergency Guest của [Cư Dân]"
+                owner_display = f"Emergency Guest của {issued_by}"
+
                 if action != "OPEN":
                     status = 'fail'
                     access_type = "anti_passback"
-                    action = "ALARM" # Chuyển action thành ALARM để kích hoạt còi hú
-                    issued_by = data.get("message", "MÃ KHÔNG HỢP LỆ") # Đổi tên hiển thị trên UI thành cảnh báo
+                    action = "ALARM"
+                    owner_display = data.get("message", "MÃ KHÔNG HỢP LỆ")
                 else:
                     status = 'success'
                     access_type = "otp"
-                # ------------------------------------
                 
                 if sio.connected:
                     sio.emit('scan_result', {
@@ -583,8 +575,8 @@ def process_and_authorize(frame, lane_id, current_plate=""):
                         'status': status,
                         'plate': f"OTP: {clean_alphanum}",
                         'captured_image': img_base64,
-                        'owner_name': issued_by,
-                        'vehicle_type': "Guest (Khách vãng lai)",
+                        'owner_name': owner_display,       # Emergency Guest của...
+                        'vehicle_type': "Emergency Guest", # LUỒNG 2: Type = Emergency Guest
                         'access_type': access_type,
                     })
                     
@@ -592,12 +584,12 @@ def process_and_authorize(frame, lane_id, current_plate=""):
                     if lane_id == "MAIN-IN" and ser: ser.write(f"ENTRY_GO:{clean_name}\n".encode())
                     elif lane_id == "MAIN-OUT" and ser: ser.write(f"EXIT_GO:{clean_name}\n".encode())
                 elif action == "ALARM":
-                    if ser: ser.write(f"ALARM_FAKE:OTP_USED\n".encode()) # Ra lệnh Arduino hú còi
+                    if ser: ser.write(f"ALARM_FAKE:OTP_USED\n".encode())
                 else:
                     if ser: ser.write(f"DENY_PLATE:OTP_FAIL\n".encode())
             
         # ==========================================
-        # LUỒNG XỬ LÝ BIỂN SỐ XE BÌNH THƯỜNG
+        # LUỒNG BIỂN SỐ XE (CITIZEN HOẶC SCHEDULED GUEST)
         # ==========================================
         else:
             print(f"\n[AI] {lane_id} - BIỂN SỐ XE: {raw_text} ({proc_ms}ms)")
@@ -608,43 +600,39 @@ def process_and_authorize(frame, lane_id, current_plate=""):
                 action = data.get("action", "KEEP_CLOSED")
                 message = data.get("message", "").lower()
                 
-                # --- TRUY TÌM TÊN KHÁCH/CHỦ XE TỪ MỌI NGÓC NGÁCH ---
                 owner_info = data.get("owner_info") or {}
-                found_name = data.get("guest_name") or owner_info.get("name") or owner_info.get("guest_name")
-                
-                v_type = owner_info.get("vehicle_type", data.get("vehicle_type", ""))
                 access_type = data.get("access_type", "unknown").lower()
+                v_type = data.get("vehicle_type") or owner_info.get("vehicle_type", "N/A")
 
-                # --- ĐÁNH CHẶN 1: ĐỊNH DẠNG TÊN KHÁCH HẸN TRƯỚC ---
-                # Nếu Backend có trả về tên, HOẶC type chứa chữ guest/khách
-                if found_name or "guest" in access_type or "khách" in access_type:
-                    access_type = "guest"
+                # --- PHÂN LOẠI CHÍNH XÁC DỰA VÀO ACCESS_TYPE ---
+                if access_type == "resident":
+                    # LUỒNG 1.1 (Citizen): Hiện tên Citizen, loại xe giữ nguyên
+                    raw_name = owner_info.get("name", "Cư dân")
+                
+                elif access_type == "guest":
+                    # LUỒNG 1.2 (Scheduled Guest): Hiện tên Khách của Cư dân, loại xe là Scheduled Guest
+                    guest_name = data.get("guest_name") or owner_info.get("name") or owner_info.get("guest_name") or "Khách lạ"
+                    raw_name = f"Khách của Cư dân ({guest_name})"
                     v_type = "Scheduled Guest"
-                    if found_name:
-                        raw_name = f"Khách của Cư dân ({found_name})"
-                    else:
-                        raw_name = "Khách Hẹn Trước"
                 else:
-                    raw_name = "Khách lạ"
+                    raw_name = "Khách chưa đăng ký"
+                    v_type = "N/A"
 
                 clean_name = strip_accents(raw_name)
 
-                # --- ĐÁNH CHẶN 2: BẮT LỖI ANTI-PASSBACK (QUÉT LẦN 2) ---
+                # --- BẮT LỖI ANTI-PASSBACK ---
                 is_anti_passback = False
                 if action != "OPEN":
-                    # Bổ sung hàng loạt từ khóa Backend thường dùng khi chặn quét 2 lần
                     passback_keywords = ["đang ở trong", "đã vào", "đã check", "check-in", "check in", "anti", "passback", "đã quét"]
                     if any(kw in message for kw in passback_keywords):
                         is_anti_passback = True
-                    # Vẫn bắt chữ "trong" nhưng loại trừ câu "không có trong whitelist"
                     elif "trong" in message and "không" not in message:
                         is_anti_passback = True
 
                 if is_anti_passback:
                     access_type = "anti_passback"
                     action = "ALARM"
-                    # Ép tên hiển thị thành cảnh báo, nhưng nếu có tên khách thì kẹp chung vào luôn
-                    if raw_name != "Khách lạ":
+                    if raw_name not in ["Khách chưa đăng ký", "Khách lạ"]:
                         raw_name = f"ANTI-PASSBACK: {raw_name}"
                     else:
                         raw_name = "CẢNH BÁO ANTI-PASSBACK"
