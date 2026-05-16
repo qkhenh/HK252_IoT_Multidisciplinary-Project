@@ -5,8 +5,8 @@
 LiquidCrystal_I2C lcd(0x27, 16, 2); 
 Servo sVao, sRa;
 
-const int GATE_DOWN = 180;
-const int GATE_UP   = 70;  
+const int GATE_DOWN = 160;
+const int GATE_UP   = 60;  
 const int buzzer = 10;
 const int threshold = 10; 
 
