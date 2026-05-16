@@ -634,6 +634,121 @@ const getUsersInZone = async (managedZoneId, { role, page = 1, limit = 20 } = {}
     return result.rows;
 };
 
+const updateUser = async (userId, { fullName, email, username, password, roleDetails = {} }) => {
+    const client = await db.getClient();
+    try {
+        await client.query('BEGIN');
+
+        // Lấy role hiện tại của user
+        const userRow = await client.query(
+            'SELECT role FROM users WHERE user_id = $1',
+            [userId]
+        );
+        if (userRow.rows.length === 0) {
+            throw Object.assign(new Error('User không tồn tại'), { statusCode: 404 });
+        }
+        const { role } = userRow.rows[0];
+
+        // Build UPDATE users động (chỉ update field được cung cấp)
+        const fields = [];
+        const values = [];
+        let idx = 1;
+
+        if (fullName !== undefined) { fields.push(`full_name = $${idx++}`); values.push(fullName); }
+        if (email !== undefined)    { fields.push(`email = $${idx++}`);     values.push(email); }
+        if (username !== undefined) { fields.push(`username = $${idx++}`);  values.push(username); }
+        if (password !== undefined && password !== '') {
+            const bcrypt = require('bcrypt');
+            const hash = await bcrypt.hash(password, 10);
+            fields.push(`password_hash = $${idx++}`);
+            values.push(hash);
+        }
+
+        let updatedUser;
+        if (fields.length > 0) {
+            values.push(userId);
+            const result = await client.query(
+                `UPDATE users SET ${fields.join(', ')} WHERE user_id = $${idx}
+                 RETURNING user_id, username, full_name, email, role, created_at`,
+                values
+            );
+            updatedUser = result.rows[0];
+        } else {
+            const result = await client.query(
+                'SELECT user_id, username, full_name, email, role, created_at FROM users WHERE user_id = $1',
+                [userId]
+            );
+            updatedUser = result.rows[0];
+        }
+
+        // Update role-specific table
+        if (role === 'citizen' && Object.keys(roleDetails).length > 0) {
+            const { address, phone_number, identity_card_number, is_house_owner, zone_id } = roleDetails;
+            const cFields = [];
+            const cValues = [];
+            let ci = 1;
+            if (address !== undefined)              { cFields.push(`address = $${ci++}`);               cValues.push(address); }
+            if (phone_number !== undefined)         { cFields.push(`phone_number = $${ci++}`);           cValues.push(phone_number); }
+            if (identity_card_number !== undefined) { cFields.push(`identity_card_number = $${ci++}`);   cValues.push(identity_card_number); }
+            if (is_house_owner !== undefined)       { cFields.push(`is_house_owner = $${ci++}`);         cValues.push(is_house_owner); }
+            if (zone_id !== undefined)              { cFields.push(`zone_id = $${ci++}`);                cValues.push(zone_id); }
+            if (cFields.length > 0) {
+                cValues.push(userId);
+                await client.query(
+                    `UPDATE citizens SET ${cFields.join(', ')} WHERE user_id = $${ci}`,
+                    cValues
+                );
+            }
+        } else if (role === 'guard' && Object.keys(roleDetails).length > 0) {
+            const { assigned_gate_id, employee_code, shift_start, shift_end } = roleDetails;
+            const gFields = [];
+            const gValues = [];
+            let gi = 1;
+            if (assigned_gate_id !== undefined) { gFields.push(`assigned_gate_id = $${gi++}`); gValues.push(assigned_gate_id); }
+            if (employee_code !== undefined)    { gFields.push(`employee_code = $${gi++}`);    gValues.push(employee_code); }
+            if (shift_start !== undefined)      { gFields.push(`shift_start = $${gi++}`);      gValues.push(shift_start); }
+            if (shift_end !== undefined)        { gFields.push(`shift_end = $${gi++}`);        gValues.push(shift_end); }
+            if (gFields.length > 0) {
+                gValues.push(userId);
+                await client.query(
+                    `UPDATE security_guards SET ${gFields.join(', ')} WHERE user_id = $${gi}`,
+                    gValues
+                );
+            }
+        } else if (role === 'manager' && Object.keys(roleDetails).length > 0) {
+            const { managed_zone_id, department_name } = roleDetails;
+            const mFields = [];
+            const mValues = [];
+            let mi = 1;
+            if (managed_zone_id !== undefined)  { mFields.push(`managed_zone_id = $${mi++}`);  mValues.push(managed_zone_id); }
+            if (department_name !== undefined)  { mFields.push(`department_name = $${mi++}`);  mValues.push(department_name); }
+            if (mFields.length > 0) {
+                mValues.push(userId);
+                await client.query(
+                    `UPDATE managers SET ${mFields.join(', ')} WHERE user_id = $${mi}`,
+                    mValues
+                );
+            }
+        }
+
+        await client.query('COMMIT');
+        return updatedUser;
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
+const deleteUser = async (userId) => {
+    const result = await db.query(
+        'DELETE FROM users WHERE user_id = $1 RETURNING user_id, username, role',
+        [userId]
+    );
+    return result.rows[0] || null;
+};
+
 // ============================================================
 // HELPERS
 // ============================================================
@@ -701,6 +816,8 @@ module.exports = {
     // FR_MAN_07
     createUser,
     getUsersInZone,
+    updateUser,
+    deleteUser,
 
     // Helpers
     getManagerZone,

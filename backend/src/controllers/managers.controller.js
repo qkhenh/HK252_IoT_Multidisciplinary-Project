@@ -660,6 +660,85 @@ const createUser = async (req, res, next) => {
     }
 };
 
+/**
+ * PATCH /api/v1/managers/users/:id
+ * Cập nhật thông tin user
+ */
+const updateUser = async (req, res, next) => {
+    try {
+        const userId = parseInt(req.params.id, 10);
+        if (isNaN(userId)) {
+            return res.status(400).json({ success: false, message: 'user_id không hợp lệ' });
+        }
+
+        const { username, password, full_name, email, role_details } = req.body;
+
+        if (password !== undefined && password !== '' && password.length < 6) {
+            return res.status(400).json({ success: false, message: 'Mật khẩu phải có ít nhất 6 ký tự' });
+        }
+
+        const updated = await managersModel.updateUser(userId, {
+            fullName: full_name,
+            email,
+            username,
+            password,
+            roleDetails: role_details || {},
+        });
+
+        await managersModel.logAuditAction({
+            actorId: req.user.user_id,
+            actionType: 'update_user',
+            targetTable: 'users',
+            targetId: userId,
+            actionDetails: JSON.stringify({ updated_fields: Object.keys(req.body) }),
+        });
+
+        res.status(200).json({ success: true, message: 'Cập nhật user thành công', data: updated });
+    } catch (error) {
+        if (error.statusCode === 404) {
+            return res.status(404).json({ success: false, message: error.message });
+        }
+        if (error.code === '23505') {
+            return res.status(409).json({ success: false, message: 'Username hoặc số điện thoại đã tồn tại' });
+        }
+        next(error);
+    }
+};
+
+/**
+ * DELETE /api/v1/managers/users/:id
+ * Xóa user khỏi hệ thống (hard delete, cascade tự xóa role tables)
+ */
+const deleteUser = async (req, res, next) => {
+    try {
+        const userId = parseInt(req.params.id, 10);
+        if (isNaN(userId)) {
+            return res.status(400).json({ success: false, message: 'user_id không hợp lệ' });
+        }
+
+        if (userId === req.user.user_id) {
+            return res.status(400).json({ success: false, message: 'Không thể tự xóa tài khoản của mình' });
+        }
+
+        const deleted = await managersModel.deleteUser(userId);
+        if (!deleted) {
+            return res.status(404).json({ success: false, message: 'User không tồn tại' });
+        }
+
+        await managersModel.logAuditAction({
+            actorId: req.user.user_id,
+            actionType: 'delete_user',
+            targetTable: 'users',
+            targetId: userId,
+            actionDetails: JSON.stringify({ deleted_username: deleted.username, role: deleted.role }),
+        });
+
+        res.status(200).json({ success: true, message: `Đã xóa user ${deleted.username}` });
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = {
     // FR_MAN_01
     getPendingVehicles,
@@ -685,4 +764,6 @@ module.exports = {
     // FR_MAN_07
     listUsers,
     createUser,
+    updateUser,
+    deleteUser,
 };

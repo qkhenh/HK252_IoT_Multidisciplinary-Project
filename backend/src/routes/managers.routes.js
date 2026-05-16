@@ -167,4 +167,19 @@ router.get('/users', managersController.listUsers);
  */
 router.post('/users', managersController.createUser);
 
+/**
+ * @route   PATCH /api/v1/managers/users/:id
+ * @desc    Cập nhật thông tin user (base + role-specific)
+ * @access  Private - Manager only
+ * @body    { username?, full_name?, email?, password?, role_details? }
+ */
+router.patch('/users/:id', managersController.updateUser);
+
+/**
+ * @route   DELETE /api/v1/managers/users/:id
+ * @desc    Xóa user khỏi hệ thống (hard delete)
+ * @access  Private - Manager only
+ */
+router.delete('/users/:id', managersController.deleteUser);
+
 module.exports = router;
