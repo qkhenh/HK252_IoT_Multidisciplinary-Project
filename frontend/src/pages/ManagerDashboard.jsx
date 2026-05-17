@@ -395,7 +395,7 @@ const ManagerDashboard = () => {
             <FileText className="w-5 h-5" /> <span>Access Logs</span>
           </button>
           <button onClick={() => setActiveTab('audit-logs')} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-bold transition-all ${activeTab === 'audit-logs' ? 'bg-[#FF6B00] text-white shadow-md' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
-            <History className="w-5 h-5" /> <span>Audit Logs</span>
+            <History className="w-5 h-5" /> <span>Manager Actions</span>
           </button>
         </div>
         <div className="p-4 border-t border-gray-800">
@@ -409,7 +409,7 @@ const ManagerDashboard = () => {
         <header className="bg-white h-20 shadow-sm border-b border-gray-200 px-8 flex justify-between items-center z-10">
           <div className="flex items-center space-x-4">
             <h2 className="text-xl font-black text-gray-800 tracking-tight uppercase">
-              {activeTab === 'dashboard' ? 'Zone Command Center' : activeTab === 'pending' ? 'Pending Approvals' : activeTab === 'users' ? 'User Database' : activeTab === 'access-logs' ? 'Access Logs' : activeTab === 'audit-logs' ? 'Audit Logs' : 'Zone Command Center'}
+              {activeTab === 'dashboard' ? 'Zone Command Center' : activeTab === 'pending' ? 'Pending Approvals' : activeTab === 'users' ? 'User Database' : activeTab === 'access-logs' ? 'Access Logs' : activeTab === 'audit-logs' ? 'Manager Actions' : 'Zone Command Center'}
             </h2>
             <button onClick={() => fetchDashboardData(true)} disabled={isRefreshing} className={`p-2 hover:bg-gray-100 rounded-full transition-all text-gray-500 ${isRefreshing ? 'opacity-50' : ''}`} title="Làm mới dữ liệu">
               <RotateCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
@@ -785,13 +785,13 @@ const ManagerDashboard = () => {
                 </div>
               )}
 
-              {/* ====== TAB: AUDIT LOGS ====== */}
+              {/* ====== TAB: MANAGER ACTIONS ====== */}
               {activeTab === 'audit-logs' && (
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
                   <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                       <History className="w-6 h-6 text-[#FF6B00]" />
-                      <h3 className="text-xl font-black text-gray-800">System Audit Logs</h3>
+                      <h3 className="text-xl font-black text-gray-800">Lịch sử hành động Manager</h3>
                     </div>
                     <button
                       onClick={() => fetchAuditLogs(1)}
