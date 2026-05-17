@@ -190,6 +190,12 @@ const GuardDashboard = () => {
           >
             MANUAL MODE
           </span>
+          <span
+            className="cursor-pointer hover:text-[#FF6B00] transition-colors"
+            onClick={() => navigate('/guard-log-history')}
+          >
+            LOG HISTORY
+          </span>
         </div>
 
         <div 

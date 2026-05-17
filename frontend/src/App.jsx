@@ -6,6 +6,7 @@ import ManualMode from './pages/ManualMode';
 import CitizenDashboard from './pages/CitizenDashboard';
 import ManagerDashboard from './pages/ManagerDashboard';
 import PersonalInformation from './pages/PersonalInformation';
+import GuardLogHistory from './pages/GuardLogHistory';
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
         <Route path="/citizen-dashboard" element={<CitizenDashboard />} />
         <Route path="/manager-dashboard" element={<ManagerDashboard />} />
         <Route path="/profile" element={<PersonalInformation />} />
+        <Route path="/guard-log-history" element={<GuardLogHistory />} />
       </Routes>
     </Router>
   );

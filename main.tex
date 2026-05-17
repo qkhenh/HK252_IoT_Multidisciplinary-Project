@@ -1739,7 +1739,7 @@ To ensure the system not only works but also performs well and securely, the fol
         \item Foreign keys: user\_id references USERS(user\_id), managed\_zone\_id references ZONES(zone\_id)
     \end{itemize}
 
-    \item \textbf{VEHICLES} (vehicle\_id, owner\_user\_id, vehicle\_type, license\_plate, vehicle\_color, is\_inside, is\_active, last\_log\_time, registered\_at)
+    \item \textbf{VEHICLES} (vehicle\_id, owner\_user\_id, vehicle\_type, license\_plate, vehicle\_color, is\_inside, is\_active, status, pending\_changes, last\_log\_time, registered\_at)
     \begin{itemize}
         \item Primary key: vehicle\_id
         \item Foreign key: owner\_user\_id references USERS(user\_id)

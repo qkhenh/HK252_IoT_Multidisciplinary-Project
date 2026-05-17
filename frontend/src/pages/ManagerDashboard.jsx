@@ -3,7 +3,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Zap, LogOut, User, Activity, Car, ShieldAlert, Users, 
   CheckCircle, XCircle, Clock, RotateCw, Bell, LayoutDashboard, 
-  ClipboardList, TrendingUp, PieChart as PieIcon, Cpu, Globe, Circle, Plus, Edit, Trash2, Shield, UserPlus, Search, Key
+  ClipboardList, TrendingUp, PieChart as PieIcon, Cpu, Globe, Circle, Plus, Edit, Trash2, Shield, UserPlus, Search, Key,
+  FileText, History
 } from 'lucide-react';
 
 import { 
@@ -39,6 +40,16 @@ const ManagerDashboard = () => {
   // --- STATES CHỨA DỮ LIỆU ĐỘNG CHO BIỂU ĐỒ ---
   const [trafficChartData, setTrafficChartData] = useState([]);
   const [pieChartData, setPieChartData] = useState([]);
+
+  // --- STATES CHO ACCESS LOGS ---
+  const [accessLogs, setAccessLogs] = useState([]);
+  const [logLoading, setLogLoading] = useState(false);
+  const [logFilters, setLogFilters] = useState({ license_plate: '', start_date: '', end_date: '' });
+  const [logPagination, setLogPagination] = useState({ page: 1, total_pages: 1, total: 0 });
+
+  // --- STATES CHO AUDIT LOGS ---
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [auditLoading, setAuditLoading] = useState(false);
 
   const addNotification = (message, type = 'info') => {
     const uniqueId = Date.now() + Math.random(); 
@@ -144,6 +155,49 @@ const ManagerDashboard = () => {
   // Tự động fetch Users khi chuyển sang tab 'users'
   useEffect(() => {
     if (activeTab === 'users') fetchUsers();
+  }, [activeTab]);
+
+  // --- LOGIC GỌI API CHO ACCESS LOGS ---
+  const fetchAccessLogs = async (page = 1) => {
+    setLogLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: 50, page });
+      if (logFilters.license_plate) params.append('license_plate', logFilters.license_plate);
+      if (logFilters.start_date) params.append('start_date', logFilters.start_date);
+      if (logFilters.end_date) params.append('end_date', logFilters.end_date);
+      const res = await fetch(`http://localhost:5000/api/v1/managers/logs?${params}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAccessLogs(data.data?.logs || []);
+        setLogPagination(data.data?.pagination || { page: 1, total_pages: 1, total: 0 });
+      }
+    } catch (e) { console.error('Lỗi fetch access logs:', e); }
+    finally { setLogLoading(false); }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'access-logs') fetchAccessLogs(1);
+  }, [activeTab]);
+
+  // --- LOGIC GỌI API CHO AUDIT LOGS ---
+  const fetchAuditLogs = async (page = 1) => {
+    setAuditLoading(true);
+    try {
+      const res = await fetch(`http://localhost:5000/api/v1/managers/audit-logs?limit=50&page=${page}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAuditLogs(Array.isArray(data.data) ? data.data : []);
+      }
+    } catch (e) { console.error('Lỗi fetch audit logs:', e); }
+    finally { setAuditLoading(false); }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'audit-logs') fetchAuditLogs(1);
   }, [activeTab]);
 
   const handleOpenAddUser = () => {
@@ -337,6 +391,12 @@ const ManagerDashboard = () => {
           <button onClick={() => setActiveTab('users')} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-bold transition-all ${activeTab === 'users' ? 'bg-[#FF6B00] text-white shadow-md' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
             <Users className="w-5 h-5" /> <span>User Management</span>
           </button>
+          <button onClick={() => setActiveTab('access-logs')} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-bold transition-all ${activeTab === 'access-logs' ? 'bg-[#FF6B00] text-white shadow-md' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+            <FileText className="w-5 h-5" /> <span>Access Logs</span>
+          </button>
+          <button onClick={() => setActiveTab('audit-logs')} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-bold transition-all ${activeTab === 'audit-logs' ? 'bg-[#FF6B00] text-white shadow-md' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+            <History className="w-5 h-5" /> <span>Audit Logs</span>
+          </button>
         </div>
         <div className="p-4 border-t border-gray-800">
           <button onClick={() => { localStorage.removeItem('token'); navigate('/'); }} className="w-full flex items-center justify-center space-x-2 text-sm font-bold text-red-400 hover:bg-red-500 hover:text-white transition-all bg-gray-800 py-3 rounded-xl">
@@ -349,7 +409,7 @@ const ManagerDashboard = () => {
         <header className="bg-white h-20 shadow-sm border-b border-gray-200 px-8 flex justify-between items-center z-10">
           <div className="flex items-center space-x-4">
             <h2 className="text-xl font-black text-gray-800 tracking-tight uppercase">
-              {activeTab === 'dashboard' ? 'Zone Command Center' : activeTab === 'pending' ? 'Pending Approvals' : 'User Database'}
+              {activeTab === 'dashboard' ? 'Zone Command Center' : activeTab === 'pending' ? 'Pending Approvals' : activeTab === 'users' ? 'User Database' : activeTab === 'access-logs' ? 'Access Logs' : activeTab === 'audit-logs' ? 'Audit Logs' : 'Zone Command Center'}
             </h2>
             <button onClick={() => fetchDashboardData(true)} disabled={isRefreshing} className={`p-2 hover:bg-gray-100 rounded-full transition-all text-gray-500 ${isRefreshing ? 'opacity-50' : ''}`} title="Làm mới dữ liệu">
               <RotateCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
@@ -606,6 +666,205 @@ const ManagerDashboard = () => {
                         {usersList.length === 0 && <tr><td colSpan="4" className="text-center py-10 text-gray-400 font-bold">No users found.</td></tr>}
                       </tbody>
                     </table>
+                  </div>
+                </div>
+              )}
+
+              {/* ====== TAB: ACCESS LOGS ====== */}
+              {activeTab === 'access-logs' && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                  <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex flex-wrap items-center gap-4">
+                    <div className="flex items-center space-x-3 flex-1">
+                      <FileText className="w-6 h-6 text-[#005B9F]" />
+                      <h3 className="text-xl font-black text-gray-800">Access Logs</h3>
+                    </div>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <input
+                        type="text"
+                        placeholder="Biển số..."
+                        value={logFilters.license_plate}
+                        onChange={(e) => setLogFilters(p => ({ ...p, license_plate: e.target.value }))}
+                        className="px-3 py-2 rounded-lg border border-gray-200 text-sm font-bold text-gray-700 focus:border-blue-500 focus:outline-none"
+                      />
+                      <input
+                        type="date"
+                        value={logFilters.start_date}
+                        onChange={(e) => setLogFilters(p => ({ ...p, start_date: e.target.value }))}
+                        className="px-3 py-2 rounded-lg border border-gray-200 text-sm font-bold text-gray-700 focus:border-blue-500 focus:outline-none"
+                      />
+                      <input
+                        type="date"
+                        value={logFilters.end_date}
+                        onChange={(e) => setLogFilters(p => ({ ...p, end_date: e.target.value }))}
+                        className="px-3 py-2 rounded-lg border border-gray-200 text-sm font-bold text-gray-700 focus:border-blue-500 focus:outline-none"
+                      />
+                      <button
+                        onClick={() => fetchAccessLogs(1)}
+                        disabled={logLoading}
+                        className="px-4 py-2 bg-[#005B9F] text-white font-bold rounded-lg text-sm hover:bg-blue-800 transition-colors flex items-center gap-2 disabled:opacity-50"
+                      >
+                        <Search className="w-4 h-4" /> Tìm kiếm
+                      </button>
+                    </div>
+                  </div>
+                  {logLoading ? (
+                    <div className="flex justify-center py-16">
+                      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#005B9F]"></div>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-gray-50 border-b border-gray-200 text-xs uppercase tracking-widest text-gray-500">
+                            <th className="p-4 font-black">Thời gian</th>
+                            <th className="p-4 font-black">Làn / Cổng</th>
+                            <th className="p-4 font-black">Biển số</th>
+                            <th className="p-4 font-black">Phương thức</th>
+                            <th className="p-4 font-black">Lý do</th>
+                            <th className="p-4 font-black">Bảo vệ</th>
+                            <th className="p-4 font-black">Ghi chú</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {accessLogs.length === 0 ? (
+                            <tr>
+                              <td colSpan="7" className="text-center py-16 text-gray-400 font-bold italic">
+                                Không có dữ liệu log.
+                              </td>
+                            </tr>
+                          ) : (
+                            accessLogs.map((log) => (
+                              <tr key={log.log_id} className="hover:bg-blue-50/30 transition-colors">
+                                <td className="p-4 text-sm font-bold text-gray-700 whitespace-nowrap">
+                                  {new Date(log.check_in_time).toLocaleString('en-GB')}
+                                </td>
+                                <td className="p-4">
+                                  <div className="text-sm font-bold text-gray-900">{log.lane_name || '—'}</div>
+                                  <div className="text-xs text-gray-400">{log.gate_name || '—'}</div>
+                                </td>
+                                <td className="p-4 font-black text-gray-900 tracking-widest text-sm">
+                                  {log.license_plate || log.detected_text || <span className="text-gray-400 font-normal italic">N/A</span>}
+                                </td>
+                                <td className="p-4">
+                                  <span className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-xs font-bold">
+                                    {log.access_method || '—'}
+                                  </span>
+                                </td>
+                                <td className="p-4 text-sm text-gray-600">
+                                  {log.action_reason || <span className="text-gray-300">—</span>}
+                                </td>
+                                <td className="p-4 text-sm font-bold text-gray-700">
+                                  {log.guard_name || <span className="text-gray-400 italic font-normal">AI</span>}
+                                </td>
+                                <td className="p-4 text-sm text-gray-600 max-w-[150px] truncate" title={log.note}>
+                                  {log.note || <span className="text-gray-300">—</span>}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  <div className="px-6 py-3 border-t border-gray-100 flex justify-between items-center text-sm text-gray-500 font-bold">
+                    <span>Tổng: {logPagination.total} bản ghi</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        disabled={logPagination.page <= 1 || logLoading}
+                        onClick={() => fetchAccessLogs(logPagination.page - 1)}
+                        className="px-3 py-1 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-40 transition-colors"
+                      >← Trước</button>
+                      <span>Trang {logPagination.page} / {logPagination.total_pages || 1}</span>
+                      <button
+                        disabled={logPagination.page >= (logPagination.total_pages || 1) || logLoading}
+                        onClick={() => fetchAccessLogs(logPagination.page + 1)}
+                        className="px-3 py-1 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-40 transition-colors"
+                      >Sau →</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ====== TAB: AUDIT LOGS ====== */}
+              {activeTab === 'audit-logs' && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                  <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <History className="w-6 h-6 text-[#FF6B00]" />
+                      <h3 className="text-xl font-black text-gray-800">System Audit Logs</h3>
+                    </div>
+                    <button
+                      onClick={() => fetchAuditLogs(1)}
+                      disabled={auditLoading}
+                      className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-bold hover:bg-gray-200 transition-colors text-sm disabled:opacity-50"
+                    >
+                      <RotateCw className={`w-4 h-4 ${auditLoading ? 'animate-spin' : ''}`} /> Làm mới
+                    </button>
+                  </div>
+                  {auditLoading ? (
+                    <div className="flex justify-center py-16">
+                      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#FF6B00]"></div>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-gray-50 border-b border-gray-200 text-xs uppercase tracking-widest text-gray-500">
+                            <th className="p-4 font-black">Thời gian</th>
+                            <th className="p-4 font-black">Loại hành động</th>
+                            <th className="p-4 font-black">Bảng / Đối tượng</th>
+                            <th className="p-4 font-black">Người thực hiện</th>
+                            <th className="p-4 font-black">Chi tiết</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {auditLogs.length === 0 ? (
+                            <tr>
+                              <td colSpan="5" className="text-center py-16 text-gray-400 font-bold italic">
+                                Chưa có audit log nào.
+                              </td>
+                            </tr>
+                          ) : (
+                            auditLogs.map((log) => (
+                              <tr key={log.audit_id} className="hover:bg-orange-50/20 transition-colors">
+                                <td className="p-4 text-sm font-bold text-gray-700 whitespace-nowrap">
+                                  {new Date(log.performed_at).toLocaleString('en-GB')}
+                                </td>
+                                <td className="p-4">
+                                  <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-xs font-bold uppercase">
+                                    {log.action_type || '—'}
+                                  </span>
+                                </td>
+                                <td className="p-4 text-sm font-bold text-gray-800">
+                                  <div>{log.target_table || '—'}</div>
+                                  <div className="text-xs text-gray-400 font-mono">ID: {log.target_id || '—'}</div>
+                                </td>
+                                <td className="p-4">
+                                  <div className="text-sm font-bold text-gray-900">{log.actor_name || '—'}</div>
+                                  <div className="text-xs text-gray-400 uppercase">{log.actor_role || '—'}</div>
+                                </td>
+                                <td className="p-4 text-sm text-gray-600 max-w-[220px] truncate" title={
+                                  log.action_details
+                                    ? (typeof log.action_details === 'object'
+                                        ? JSON.stringify(log.action_details)
+                                        : String(log.action_details))
+                                    : ''
+                                }>
+                                  {log.action_details
+                                    ? (typeof log.action_details === 'object'
+                                        ? JSON.stringify(log.action_details).substring(0, 80)
+                                        : String(log.action_details).substring(0, 80))
+                                    : <span className="text-gray-300">—</span>}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  <div className="px-6 py-3 border-t border-gray-100 text-sm text-gray-400 font-bold">
+                    Tổng: {auditLogs.length} bản ghi
                   </div>
                 </div>
               )}
